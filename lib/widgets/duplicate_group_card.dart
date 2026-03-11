@@ -238,13 +238,34 @@ class _ImageTileState extends State<_ImageTile> {
             borderRadius: BorderRadius.circular(11),
             child: Stack(
               children: [
-                // Image thumbnail
+                // Image thumbnail - optimized loading
                 AspectRatio(
                   aspectRatio: 1,
-                  child: Image.file(
-                    widget.image.file,
+                  child: Image(
+                    image: ResizeImage(
+                      FileImage(widget.image.file),
+                      width: 200,
+                      policy: ResizeImagePolicy.fit,
+                    ),
                     fit: BoxFit.cover,
-                    cacheWidth: 300,
+                    gaplessPlayback: true,
+                    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                      if (wasSynchronouslyLoaded || frame != null) {
+                        return child;
+                      }
+                      return Container(
+                        color: AppTheme.bgSurface,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 20, height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.textMuted,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                     errorBuilder: (_, e, st) => Container(
                       color: AppTheme.bgSurface,
                       child: const Icon(

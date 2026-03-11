@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
@@ -20,6 +21,14 @@ class ScanProgress {
 
   double get progress =>
       totalFiles > 0 ? scannedFiles / totalFiles : 0.0;
+}
+
+/// Top-level function for computing file hash in isolate
+Future<String> _computeHashInIsolate(String filePath) async {
+  final file = File(filePath);
+  final Uint8List bytes = await file.readAsBytes();
+  final digest = md5.convert(bytes);
+  return digest.toString();
 }
 
 class ImageScanner {
@@ -88,15 +97,18 @@ class ImageScanner {
       return [];
     }
 
-    // Phase 3: Compute hashes for potential duplicates
+    // Phase 3: Compute hashes in isolate (non-blocking!)
     final Map<String, List<DuplicateImageInfo>> hashGroups = {};
     int scanned = 0;
+    int lastReported = 0;
+    final stopwatch = Stopwatch()..start();
 
     for (final file in potentialDuplicates) {
       if (_cancelled) return [];
 
       try {
-        final hash = await _computeFileHash(file);
+        // Run hash computation in a separate isolate to avoid blocking UI
+        final hash = await Isolate.run(() => _computeHashInIsolate(file.path));
         final stat = await file.stat();
 
         final imageInfo = DuplicateImageInfo(
@@ -110,13 +122,22 @@ class ImageScanner {
       } catch (_) {}
 
       scanned++;
-      onProgress?.call(ScanProgress(
-        totalFiles: potentialDuplicates.length,
-        scannedFiles: scanned,
-        currentFile: p.basename(file.path),
-        duplicateGroupsFound:
-            hashGroups.values.where((g) => g.length > 1).length,
-      ));
+
+      // Throttle progress updates - only report every 100ms or on last file
+      // This prevents excessive setState calls which cause UI lag
+      if (stopwatch.elapsedMilliseconds - lastReported > 100 ||
+          scanned == potentialDuplicates.length) {
+        lastReported = stopwatch.elapsedMilliseconds;
+        onProgress?.call(ScanProgress(
+          totalFiles: potentialDuplicates.length,
+          scannedFiles: scanned,
+          currentFile: p.basename(file.path),
+          duplicateGroupsFound:
+              hashGroups.values.where((g) => g.length > 1).length,
+        ));
+        // Allow UI thread to process
+        await Future.delayed(Duration.zero);
+      }
     }
 
     // Build duplicate groups
@@ -135,12 +156,6 @@ class ImageScanner {
     // Sort groups by total size (largest first)
     groups.sort((a, b) => b.totalSize.compareTo(a.totalSize));
     return groups;
-  }
-
-  Future<String> _computeFileHash(File file) async {
-    final Uint8List bytes = await file.readAsBytes();
-    final digest = md5.convert(bytes);
-    return digest.toString();
   }
 
   /// Delete selected images
