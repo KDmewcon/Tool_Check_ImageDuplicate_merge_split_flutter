@@ -99,7 +99,9 @@ class _AutoSplitParams {
   final String outputDir;
   final List<int> horizontalLines;
   final List<int> verticalLines;
-  final String? namePrefix; // e.g. "2" -> files named 2$1, 2$2, ...
+  final String? namePrefix;
+  final bool removeWhiteBg;
+  final int whiteTolerance; // 0-255, how close to white to remove
 
   _AutoSplitParams({
     required this.inputPath,
@@ -107,6 +109,8 @@ class _AutoSplitParams {
     required this.horizontalLines,
     required this.verticalLines,
     this.namePrefix,
+    this.removeWhiteBg = false,
+    this.whiteTolerance = 20,
   });
 }
 
@@ -426,6 +430,43 @@ Map<String, dynamic> _autoDetectGridInIsolate(_AutoDetectParams params) {
 }
 
 /// Top-level function: auto-split image using detected grid lines
+/// Remove white/near-white background from an image tile, making it transparent.
+/// [tolerance] 0-255: how close to pure white a pixel must be to become transparent.
+img.Image _removeWhiteBg(img.Image src, int tolerance) {
+  // Ensure image has alpha channel
+  final result = src.hasAlpha ? src.clone() : img.Image(
+    width: src.width,
+    height: src.height,
+    numChannels: 4,
+  );
+
+  // Copy pixels if we created a new image
+  if (!src.hasAlpha) {
+    for (int y = 0; y < src.height; y++) {
+      for (int x = 0; x < src.width; x++) {
+        final p = src.getPixel(x, y);
+        result.setPixel(x, y, img.ColorRgba8(
+          p.r.toInt(), p.g.toInt(), p.b.toInt(), 255));
+      }
+    }
+  }
+
+  final threshold = 255 - tolerance;
+  for (int y = 0; y < result.height; y++) {
+    for (int x = 0; x < result.width; x++) {
+      final pixel = result.getPixel(x, y);
+      final r = pixel.r.toInt();
+      final g = pixel.g.toInt();
+      final b = pixel.b.toInt();
+      // If pixel is near-white, set alpha to 0
+      if (r >= threshold && g >= threshold && b >= threshold) {
+        result.setPixel(x, y, img.ColorRgba8(r, g, b, 0));
+      }
+    }
+  }
+  return result;
+}
+
 List<String> _autoSplitInIsolate(_AutoSplitParams params) {
   final file = File(params.inputPath);
   final bytes = file.readAsBytesSync();
@@ -456,16 +497,22 @@ List<String> _autoSplitInIsolate(_AutoSplitParams params) {
 
       if (w <= 0 || h <= 0) continue;
 
-      final tile = img.copyCrop(image, x: x, y: y, width: w, height: h);
+      img.Image tile = img.copyCrop(image, x: x, y: y, width: w, height: h);
 
-      // Use prefix naming (e.g. "2\$1") or fallback to original naming
+      // Apply white background removal if requested
+      if (params.removeWhiteBg) {
+        tile = _removeWhiteBg(tile, params.whiteTolerance);
+      }
+
+      // Always use PNG when removing background (to preserve transparency)
+      final finalExt = params.removeWhiteBg ? '.png' : ext;
       final outputName = (prefix != null && prefix.isNotEmpty)
-          ? '$prefix\$${index}$ext'
-          : '${baseName}_${row}_$col$ext';
+          ? '$prefix\$${index}$finalExt'
+          : '${baseName}_${row}_$col$finalExt';
       final outputPath = p.join(params.outputDir, outputName);
 
       Uint8List encoded;
-      switch (ext) {
+      switch (finalExt) {
         case '.png':
           encoded = img.encodePng(tile);
           break;
@@ -721,6 +768,8 @@ class ImageProcessor {
     required List<int> horizontalLines,
     required List<int> verticalLines,
     String? namePrefix,
+    bool removeWhiteBg = false,
+    int whiteTolerance = 20,
     void Function(int current, int total)? onProgress,
   }) async {
     final result = await Isolate.run(() {
@@ -730,6 +779,8 @@ class ImageProcessor {
         horizontalLines: horizontalLines,
         verticalLines: verticalLines,
         namePrefix: namePrefix,
+        removeWhiteBg: removeWhiteBg,
+        whiteTolerance: whiteTolerance,
       ));
     });
     onProgress?.call(result.length, result.length);
@@ -840,6 +891,26 @@ class ImageProcessor {
 
     return results;
   }
+
+  /// Crop border pixels from an image then zoom back to original size.
+  /// Uses nearest-neighbor interpolation — perfect for pixel art sprites.
+  static Future<void> cropAndRestore({
+    required String inputPath,
+    required String outputPath,
+    required int cropTop,
+    required int cropBottom,
+    required int cropLeft,
+    required int cropRight,
+  }) async {
+    await Isolate.run(() => _cropRestoreInIsolate(CropRestoreParams(
+          inputPath: inputPath,
+          outputPath: outputPath,
+          cropTop: cropTop,
+          cropBottom: cropBottom,
+          cropLeft: cropLeft,
+          cropRight: cropRight,
+        )));
+  }
 }
 
 /// Scale configuration for resize
@@ -894,3 +965,78 @@ void _resizeSingleInIsolate(
 
   File(outputPath).writeAsBytesSync(encoded);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Crop border + restore to original size (pixel-perfect upscale)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class CropRestoreParams {
+  final String inputPath;
+  final String outputPath;
+  final int cropTop;
+  final int cropBottom;
+  final int cropLeft;
+  final int cropRight;
+
+  CropRestoreParams({
+    required this.inputPath,
+    required this.outputPath,
+    required this.cropTop,
+    required this.cropBottom,
+    required this.cropLeft,
+    required this.cropRight,
+  });
+}
+
+void _cropRestoreInIsolate(CropRestoreParams params) {
+  final file = File(params.inputPath);
+  final bytes = file.readAsBytesSync();
+  final image = img.decodeImage(bytes);
+  if (image == null) throw Exception('Không thể đọc ảnh: ${params.inputPath}');
+
+  final origW = image.width;
+  final origH = image.height;
+
+  final cropX = params.cropLeft;
+  final cropY = params.cropTop;
+  final cropW = origW - params.cropLeft - params.cropRight;
+  final cropH = origH - params.cropTop - params.cropBottom;
+
+  if (cropW <= 0 || cropH <= 0) {
+    throw Exception(
+        'Crop quá lớn: ảnh ${origW}x${origH} không thể cắt ${params.cropLeft}+${params.cropRight} ngang, ${params.cropTop}+${params.cropBottom} dọc');
+  }
+
+  // Step 1: Crop the border pixels
+  final cropped = img.copyCrop(image, x: cropX, y: cropY, width: cropW, height: cropH);
+
+  // Step 2: Zoom back to original size using nearest-neighbor (pixel perfect)
+  final restored = img.copyResize(
+    cropped,
+    width: origW,
+    height: origH,
+    interpolation: img.Interpolation.nearest,
+  );
+
+  // Encode (always PNG to preserve any transparency)
+  final ext = p.extension(params.outputPath).toLowerCase();
+  Uint8List encoded;
+  switch (ext) {
+    case '.jpg':
+    case '.jpeg':
+      encoded = img.encodeJpg(restored, quality: 97);
+      break;
+    case '.bmp':
+      encoded = img.encodeBmp(restored);
+      break;
+    case '.gif':
+      encoded = img.encodeGif(restored);
+      break;
+    default:
+      encoded = img.encodePng(restored);
+      break;
+  }
+
+  File(params.outputPath).writeAsBytesSync(encoded);
+}
+

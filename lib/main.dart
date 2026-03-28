@@ -5,6 +5,7 @@ import 'screens/auto_split_screen.dart';
 import 'screens/merge_screen.dart';
 import 'screens/resize_screen.dart';
 import 'screens/rename_screen.dart';
+import 'screens/crop_restore_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -73,6 +74,12 @@ class _AppShellState extends State<AppShell> {
       label: 'Rename file',
       color: AppTheme.accentLight,
     ),
+    _NavItem(
+      icon: Icons.crop_rotate,
+      activeIcon: Icons.crop_rotate,
+      label: 'Crop & Restore',
+      color: AppTheme.primary,
+    ),
   ];
 
   final _screens = const [
@@ -82,6 +89,7 @@ class _AppShellState extends State<AppShell> {
     MergeScreen(),
     ResizeScreen(),
     RenameScreen(),
+    CropRestoreScreen(),
   ];
 
   @override

@@ -37,6 +37,10 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
   final _resizeWidthController = TextEditingController(text: '32');
   final _resizeHeightController = TextEditingController(text: '32');
 
+  // White background removal
+  bool _removeWhiteBg = false;
+  double _whiteTolerance = 20;
+
   @override
   void dispose() {
     _idController.dispose();
@@ -148,6 +152,8 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
         namePrefix: _idController.text.trim().isNotEmpty
             ? _idController.text.trim()
             : null,
+        removeWhiteBg: _removeWhiteBg,
+        whiteTolerance: _whiteTolerance.round(),
         onProgress: (current, total) {
           setState(() {
             _progress = current / total;
@@ -804,6 +810,144 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                             'Ảnh gốc giữ nguyên, bản resize lưu vào thư mục "${p.basename(_outputDir ?? "")}_resize"',
                             style: const TextStyle(
                                 color: AppTheme.accent, fontSize: 10),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // White background removal card
+          _buildCard(
+            title: 'Khử nền trắng',
+            icon: Icons.auto_fix_normal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                InkWell(
+                  onTap: () {
+                    setState(() => _removeWhiteBg = !_removeWhiteBg);
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: _removeWhiteBg
+                          ? AppTheme.success.withValues(alpha: 0.1)
+                          : AppTheme.bgSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _removeWhiteBg
+                            ? AppTheme.success.withValues(alpha: 0.3)
+                            : AppTheme.border,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _removeWhiteBg
+                              ? Icons.check_box
+                              : Icons.check_box_outline_blank,
+                          size: 18,
+                          color: _removeWhiteBg
+                              ? AppTheme.success
+                              : AppTheme.textMuted,
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Khử nền trắng → trong suốt',
+                                  style: TextStyle(
+                                      color: AppTheme.textSecondary,
+                                      fontSize: 12)),
+                              Text('Output sẽ lưu dưới dạng PNG',
+                                  style: TextStyle(
+                                      color: AppTheme.textMuted,
+                                      fontSize: 10)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_removeWhiteBg) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Mức hiệu chỉnh (tolerance):',
+                          style: TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 11)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.success.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                              color:
+                                  AppTheme.success.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          '${_whiteTolerance.round()}',
+                          style: const TextStyle(
+                              color: AppTheme.success,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: _whiteTolerance,
+                    min: 1,
+                    max: 100,
+                    divisions: 99,
+                    activeColor: AppTheme.success,
+                    inactiveColor: AppTheme.border,
+                    onChanged: (v) => setState(() => _whiteTolerance = v),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Chặt (1)',
+                          style: TextStyle(
+                              color: AppTheme.textMuted, fontSize: 10)),
+                      const Text('Chỉ trắng thuần',
+                          style: TextStyle(
+                              color: AppTheme.textMuted, fontSize: 10)),
+                      const Text('Rộng (100)',
+                          style: TextStyle(
+                              color: AppTheme.textMuted, fontSize: 10)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.warning.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: AppTheme.warning.withValues(alpha: 0.2)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.tips_and_updates,
+                            size: 12, color: AppTheme.warning),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Low = chỉ xóa trắng thuần. High = xóa cả gần-trắng (có thể ảnh hưởng viền).',
+                            style: TextStyle(
+                                color: AppTheme.warning, fontSize: 10),
                           ),
                         ),
                       ],
