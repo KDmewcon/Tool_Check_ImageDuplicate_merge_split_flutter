@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'screens/split_screen.dart';
+import 'screens/auto_split_screen.dart';
 import 'screens/merge_screen.dart';
+import 'screens/resize_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -47,17 +49,31 @@ class _AppShellState extends State<AppShell> {
       color: AppTheme.accent,
     ),
     _NavItem(
+      icon: Icons.auto_awesome_outlined,
+      activeIcon: Icons.auto_awesome,
+      label: 'Tách tự động',
+      color: AppTheme.warning,
+    ),
+    _NavItem(
       icon: Icons.merge_outlined,
       activeIcon: Icons.merge,
       label: 'Gộp ảnh',
       color: AppTheme.primary,
+    ),
+    _NavItem(
+      icon: Icons.photo_size_select_large_outlined,
+      activeIcon: Icons.photo_size_select_large,
+      label: 'Resize ảnh',
+      color: AppTheme.primaryLight,
     ),
   ];
 
   final _screens = const [
     HomeScreen(),
     SplitScreen(),
+    AutoSplitScreen(),
     MergeScreen(),
+    ResizeScreen(),
   ];
 
   @override
