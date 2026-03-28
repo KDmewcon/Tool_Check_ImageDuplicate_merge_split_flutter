@@ -4,6 +4,7 @@ import 'screens/split_screen.dart';
 import 'screens/auto_split_screen.dart';
 import 'screens/merge_screen.dart';
 import 'screens/resize_screen.dart';
+import 'screens/rename_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -66,6 +67,12 @@ class _AppShellState extends State<AppShell> {
       label: 'Resize ảnh',
       color: AppTheme.primaryLight,
     ),
+    _NavItem(
+      icon: Icons.drive_file_rename_outline,
+      activeIcon: Icons.drive_file_rename_outline,
+      label: 'Rename file',
+      color: AppTheme.accentLight,
+    ),
   ];
 
   final _screens = const [
@@ -74,6 +81,7 @@ class _AppShellState extends State<AppShell> {
     AutoSplitScreen(),
     MergeScreen(),
     ResizeScreen(),
+    RenameScreen(),
   ];
 
   @override
