@@ -17,7 +17,11 @@ class CropRestoreScreen extends StatefulWidget {
 }
 
 class _CropRestoreScreenState extends State<CropRestoreScreen> {
-  String? _inputPath;
+  String? _selectedDir;
+  List<String> _imageFiles = [];
+  String? _previewImagePath;
+  String? _outputDir;
+  double _progress = 0;
   Uint8List? _previewBytes;    // original image bytes for display
   Uint8List? _resultBytes;     // result image bytes for display
   int _origW = 0;
@@ -32,14 +36,43 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
   bool _isProcessing = false;
   bool _isDragging = false;
 
-  Future<void> _pickImage() async {
-    final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Chọn ảnh cần crop',
-      type: FileType.custom,
-      allowedExtensions: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp'],
+  Future<void> _pickDirectory() async {
+    final result = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Chọn thư mục chứa ảnh cần crop',
     );
-    if (result != null && result.files.single.path != null) {
-      await _loadImage(result.files.single.path!);
+    if (result != null) {
+      _loadDirectory(result);
+    }
+  }
+
+  void _loadDirectory(String dirPath) {
+    setState(() {
+      _selectedDir = dirPath;
+      _outputDir = '${dirPath}_crop';
+      _imageFiles = [];
+      _previewImagePath = null;
+      _previewBytes = null;
+      _resultBytes = null;
+      _origW = 0;
+      _origH = 0;
+    });
+    
+    final dir = Directory(dirPath);
+    if (!dir.existsSync()) return;
+    
+    final validExts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'};
+    final files = dir.listSync().whereType<File>().where((f) => 
+        validExts.contains(p.extension(f.path).toLowerCase())
+    ).map((f) => f.path).toList();
+    
+    setState(() {
+      _imageFiles = files;
+    });
+    
+    if (files.isNotEmpty) {
+      _loadImage(files.first);
+    } else {
+      _showMsg('Không tìm thấy ảnh nào trong thư mục!', isError: true);
     }
   }
 
@@ -62,7 +95,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
 
   Future<void> _loadImage(String path) async {
     setState(() {
-      _inputPath = path;
+      _previewImagePath = path;
       _resultBytes = null;
     });
     try {
@@ -79,8 +112,8 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
     }
   }
 
-  Future<void> _process() async {
-    if (_inputPath == null || _origW == 0) return;
+  Future<void> _processAll() async {
+    if (_imageFiles.isEmpty || _origW == 0 || _outputDir == null) return;
     final cropW = _origW - _cropLeft - _cropRight;
     final cropH = _origH - _cropTop - _cropBottom;
     if (cropW <= 0 || cropH <= 0) {
@@ -88,65 +121,51 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
       return;
     }
 
+    final outDir = Directory(_outputDir!);
+    if (!outDir.existsSync()) outDir.createSync(recursive: true);
+
     setState(() {
       _isProcessing = true;
+      _progress = 0;
       _resultBytes = null;
     });
 
     try {
-      // Process in isolate then read result bytes for preview
-      final ext = p.extension(_inputPath!).toLowerCase();
-      final tmpPath = '${_inputPath!}_crop_preview_tmp$ext';
+      int success = 0;
+      for (int i = 0; i < _imageFiles.length; i++) {
+        setState(() => _progress = (i + 1) / _imageFiles.length);
+        final input = _imageFiles[i];
+        final ext = p.extension(input).toLowerCase();
+        final baseName = p.basenameWithoutExtension(input);
+        final output = p.join(_outputDir!, '$baseName$ext');
 
-      await ImageProcessor.cropAndRestore(
-        inputPath: _inputPath!,
-        outputPath: tmpPath,
-        cropTop: _cropTop,
-        cropBottom: _cropBottom,
-        cropLeft: _cropLeft,
-        cropRight: _cropRight,
-      );
-
-      final resultBytes = File(tmpPath).readAsBytesSync();
-      File(tmpPath).deleteSync(); // clean up temp file
+        await ImageProcessor.cropAndRestore(
+          inputPath: input,
+          outputPath: output,
+          cropTop: _cropTop,
+          cropBottom: _cropBottom,
+          cropLeft: _cropLeft,
+          cropRight: _cropRight,
+        );
+        success++;
+      }
 
       setState(() {
-        _resultBytes = resultBytes;
         _isProcessing = false;
+        if (_previewImagePath != null) {
+             final ext = p.extension(_previewImagePath!).toLowerCase();
+             final baseName = p.basenameWithoutExtension(_previewImagePath!);
+             final out = p.join(_outputDir!, '$baseName$ext');
+             if (File(out).existsSync()) {
+                 _resultBytes = File(out).readAsBytesSync();
+             }
+        }
       });
+      _showMsg('Đã xử lý xong $success ảnh! Đã lưu vào ${_outputDir!}');
     } catch (e) {
       setState(() => _isProcessing = false);
       _showMsg('Lỗi: $e', isError: true);
     }
-  }
-
-  Future<void> _saveResult() async {
-    if (_resultBytes == null || _inputPath == null) return;
-    final ext = p.extension(_inputPath!).toLowerCase();
-    final baseName = p.basenameWithoutExtension(_inputPath!);
-    final defaultName = '${baseName}_crop$ext';
-
-    final savePath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Lưu ảnh',
-      fileName: defaultName,
-      allowedExtensions: [ext.replaceFirst('.', '')],
-      type: FileType.custom,
-    );
-
-    if (savePath != null) {
-      File(savePath).writeAsBytesSync(_resultBytes!);
-      _showMsg('Đã lưu: ${p.basename(savePath)}');
-    }
-  }
-
-  Future<void> _overwriteOriginal() async {
-    if (_resultBytes == null || _inputPath == null) return;
-    File(_inputPath!).writeAsBytesSync(_resultBytes!);
-    setState(() {
-      _previewBytes = _resultBytes;
-      _resultBytes = null;
-    });
-    _showMsg('Đã ghi đè file gốc');
   }
 
   void _showMsg(String msg, {bool isError = false}) {
@@ -196,15 +215,15 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
         children: [
           // Pick image
           _card(
-            title: 'Chọn ảnh',
-            icon: Icons.image,
+            title: 'Chon thư mục (hàng loạt)',
+            icon: Icons.folder_special,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ElevatedButton.icon(
-                  onPressed: _pickImage,
+                  onPressed: _pickDirectory,
                   icon: const Icon(Icons.folder_open, size: 16),
-                  label: const Text('Chọn file ảnh'),
+                  label: const Text('Chọn thư mục'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.accent,
                     foregroundColor: Colors.white,
@@ -216,7 +235,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                   icon: const Icon(Icons.content_paste, size: 16),
                   label: const Text('Paste đường dẫn'),
                 ),
-                if (_inputPath != null) ...[
+                if (_selectedDir != null || _imageFiles.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -229,7 +248,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          p.basename(_inputPath!),
+                          _selectedDir != null ? p.basename(_selectedDir!) : p.basename(_previewImagePath ?? ''),
                           style: const TextStyle(
                               color: AppTheme.textPrimary,
                               fontSize: 12,
@@ -237,6 +256,12 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                               fontFamily: 'monospace'),
                           overflow: TextOverflow.ellipsis,
                         ),
+                        if (_imageFiles.isNotEmpty)
+                          Text(
+                            '${_imageFiles.length} ảnh đã chọn',
+                            style: const TextStyle(
+                                color: AppTheme.textMuted, fontSize: 11),
+                          ),
                         if (_origW > 0)
                           Text(
                             '${_origW} × ${_origH} px',
@@ -338,8 +363,8 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
           SizedBox(
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: _inputPath != null && !_isProcessing && _cropValid
-                  ? _process
+              onPressed: _imageFiles.isNotEmpty && !_isProcessing && _cropValid
+                  ? _processAll
                   : null,
               icon: _isProcessing
                   ? const SizedBox(
@@ -348,7 +373,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.crop_rotate, size: 18),
-              label: Text(_isProcessing ? 'Đang xử lý...' : 'Crop & Restore'),
+              label: Text(_isProcessing ? 'Đang xử lý ${(_progress * 100).toStringAsFixed(0)}%' : 'Crop & Restore (${_imageFiles.length})'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
@@ -357,30 +382,6 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
               ),
             ),
           ),
-
-          // Save buttons (only after result)
-          if (_resultBytes != null) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: _saveResult,
-              icon: const Icon(Icons.save, size: 16),
-              label: const Text('Lưu thành file mới'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.success,
-                side: const BorderSide(color: AppTheme.success),
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _overwriteOriginal,
-              icon: const Icon(Icons.save_as, size: 16),
-              label: const Text('Ghi đè file gốc'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.danger,
-                side: const BorderSide(color: AppTheme.danger),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -393,13 +394,26 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
       onDragDone: (detail) {
         setState(() => _isDragging = false);
         final validExts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'};
-        final files = detail.files
-            .where((f) => validExts.contains(p.extension(f.path).toLowerCase()))
-            .toList();
-        if (files.isNotEmpty) {
-          _loadImage(files.first.path);
+        List<String> validFiles = [];
+        
+        for (final xfile in detail.files) {
+          if (Directory(xfile.path).existsSync()) {
+            _loadDirectory(xfile.path);
+            return; // Load entire directory if dropped
+          } else if (validExts.contains(p.extension(xfile.path).toLowerCase())) {
+            validFiles.add(xfile.path);
+          }
+        }
+        
+        if (validFiles.isNotEmpty) {
+          setState(() {
+            _selectedDir = p.dirname(validFiles.first);
+            _outputDir = '${_selectedDir}_crop';
+            _imageFiles = validFiles;
+          });
+          _loadImage(validFiles.first);
         } else {
-          _showMsg('Vui lòng kéo ảnh (PNG, JPG, BMP...)', isError: true);
+          _showMsg('Vui lòng kéo ảnh hợp lệ hoặc một thư mục (PNG, JPG...)', isError: true);
         }
       },
       child: AnimatedContainer(
@@ -410,7 +424,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
           border: Border.all(
             color: _isDragging
                 ? AppTheme.primary
-                : (_inputPath == null
+                : (_imageFiles.isEmpty
                     ? AppTheme.primary.withValues(alpha: 0.3)
                     : AppTheme.border),
             width: _isDragging ? 2.5 : 1.5,
@@ -425,7 +439,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                 ]
               : null,
         ),
-        child: _inputPath == null
+        child: _imageFiles.isEmpty
             ? _buildEmpty()
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -509,9 +523,9 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: _pickImage,
+            onPressed: _pickDirectory,
             icon: const Icon(Icons.add_photo_alternate, size: 18),
-            label: const Text('Chọn ảnh'),
+            label: const Text('Chọn thư mục'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,

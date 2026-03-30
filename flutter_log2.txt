@@ -1,0 +1,57 @@
+Launching lib/main.dart on macOS in debug mode...
+Building macOS application...                                   
+✓ Built build/macos/Build/Products/Debug/duplicate_image_cleaner.app
+2026-03-28 13:36:19.798 duplicate_image_cleaner[20328:954184] Running with merged UI and platform thread. Experimental.
+Failed to foreground app; open returned 1
+Syncing files to device macOS...                                    66ms
+
+Flutter run key commands.
+r Hot reload. 🔥🔥🔥
+R Hot restart.
+h List all available interactive commands.
+d Detach (terminate "flutter run" but leave application running).
+c Clear the screen
+q Quit (terminate the application on the device).
+
+A Dart VM Service on macOS is available at: http://127.0.0.1:55708/08dYxjXxEu8=/
+The Flutter DevTools debugger and profiler on macOS is available at: http://127.0.0.1:55708/08dYxjXxEu8=/devtools/?uri=ws://127.0.0.1:55708/08dYxjXxEu8=/ws
+
+══╡ EXCEPTION CAUGHT BY RENDERING LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during layout:
+A RenderFlex overflowed by 43 pixels on the bottom.
+
+The relevant error-causing widget was:
+  Column
+  Column:file:///Users/vuhoang/Downloads/Tool_Check_ImageDuplicate_merge_split_flutter-main/lib/screens/resize_screen.dart:662:16
+
+To inspect this widget in Flutter DevTools, visit:
+http://127.0.0.1:55708/08dYxjXxEu8=/devtools//#/inspector?uri=http%3A%2F%2F127.0.0.1%3A55708%2F08dYxjXxEu8%3D%2F&inspectorRef=inspector-0
+
+The overflowing RenderFlex has an orientation of Axis.vertical.
+The edge of the RenderFlex that is overflowing has been marked in the rendering with a yellow and
+black striped pattern. This is usually caused by the contents being too big for the RenderFlex.
+Consider applying a flex factor (e.g. using an Expanded widget) to force the children of the
+RenderFlex to fit within the available space instead of being sized to their natural size.
+This is considered an error condition because it indicates that there is content that cannot be
+seen. If the content is legitimately bigger than the available space, consider clipping it with a
+ClipRect widget before putting it in the flex, or using a scrollable container rather than a Flex,
+like a ListView.
+The specific RenderFlex in question is: RenderFlex#4803e relayoutBoundary=up3 OVERFLOWING:
+  needs compositing
+  creator: Column ← LayoutBuilder ← KeyedSubtree-[<'list-view'>] ← FadeTransition-[<[<'list-view'>]>]
+    ← KeyedSubtree-[<[<[<'list-view'>]>]>] ← Stack ← AnimatedSwitcher ← Padding ← DecoratedBox ←
+    Container ← AnimatedContainer ← Expanded ← ⋯
+  parentData: offset=Offset(0.0, 0.0) (can use size)
+  constraints: BoxConstraints(0.0<=w<=546.0, 0.0<=h<=9.6)
+  size: Size(546.0, 9.6)
+  direction: vertical
+  mainAxisAlignment: start
+  mainAxisSize: max
+  crossAxisAlignment: center
+  verticalDirection: down
+  spacing: 0.0
+◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤
+════════════════════════════════════════════════════════════════════════════════════════════════════
+
+Another exception was thrown: A RenderFlex overflowed by 37 pixels on the bottom.
+Lost connection to device.

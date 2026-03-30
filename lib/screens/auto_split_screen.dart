@@ -731,6 +731,7 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 10),
                           ),
+                          onChanged: (_) => setState(() {}),
                         ),
                       ),
                       const Padding(
@@ -774,6 +775,7 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                             contentPadding: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 10),
                           ),
+                          onChanged: (_) => setState(() {}),
                         ),
                       ),
                     ],
@@ -789,6 +791,8 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                       _buildResizePreset('32×32', 32, 32),
                       _buildResizePreset('48×48', 48, 48),
                       _buildResizePreset('64×64', 64, 64),
+                      _buildResizePreset('96×96', 96, 96),
+                      _buildResizePreset('128×128', 128, 128),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1167,11 +1171,29 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                 Text(label,
                     style: const TextStyle(
                         color: AppTheme.textMuted, fontSize: 10)),
-                Text('$value',
+                SizedBox(
+                  height: 30, // constrain height to fit in row without layout breaking
+                  child: TextFormField(
+                    key: ValueKey('counter-$label-$value'),
+                    initialValue: value.toString(),
+                    keyboardType: TextInputType.number,
                     style: const TextStyle(
                         color: AppTheme.textPrimary,
                         fontSize: 16,
-                        fontWeight: FontWeight.w700)),
+                        fontWeight: FontWeight.w700),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (val) {
+                      final parsed = int.tryParse(val);
+                      if (parsed != null && parsed >= 0) {
+                        onChanged(parsed);
+                      }
+                    },
+                  ),
+                ),
               ],
             ),
           ),

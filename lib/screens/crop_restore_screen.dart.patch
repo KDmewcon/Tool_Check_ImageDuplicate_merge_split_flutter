@@ -1,0 +1,21 @@
+@@ -19,10 +19,12 @@
+ class _CropRestoreScreenState extends State<CropRestoreScreen> {
+-  String? _inputPath;
++  String? _selectedDir;
++  List<String> _imageFiles = [];
++  String? _previewImagePath;
+   Uint8List? _previewBytes;    // original image bytes for display
+   Uint8List? _resultBytes;     // result image bytes for display
+   int _origW = 0;
+   int _origH = 0;
+ 
+   int _cropTop = 1;
+   int _cropBottom = 1;
+   int _cropLeft = 1;
+   int _cropRight = 1;
+   bool _linkSides = true;
++  String? _outputDir;
+ 
+   bool _isProcessing = false;
+   bool _isDragging = false;
++  double _progress = 0;
