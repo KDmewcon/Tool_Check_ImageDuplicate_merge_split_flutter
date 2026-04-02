@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
@@ -7,6 +6,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 import '../services/image_processor.dart';
+import '../services/meta_cleanup_service.dart';
 import '../theme/app_theme.dart';
 
 class CropRestoreScreen extends StatefulWidget {
@@ -22,8 +22,8 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
   String? _previewImagePath;
   String? _outputDir;
   double _progress = 0;
-  Uint8List? _previewBytes;    // original image bytes for display
-  Uint8List? _resultBytes;     // result image bytes for display
+  Uint8List? _previewBytes; // original image bytes for display
+  Uint8List? _resultBytes; // result image bytes for display
   int _origW = 0;
   int _origH = 0;
 
@@ -40,8 +40,37 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Chọn thư mục chứa ảnh cần crop',
     );
-    if (result != null) {
-      _loadDirectory(result);
+    if (result == null) return;
+
+    final deletedMetaFiles =
+        await MetaCleanupService.cleanupMetaFilesOnFolderPick(result);
+    if (!mounted) return;
+
+    _loadDirectory(result);
+
+    if (deletedMetaFiles != null) {
+      final cleaned = deletedMetaFiles > 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                cleaned ? Icons.cleaning_services : Icons.info_outline,
+                color: cleaned ? AppTheme.warning : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  cleaned
+                      ? 'Đã xóa $deletedMetaFiles file .meta trong thư mục đã chọn'
+                      : 'Không có file .meta trong thư mục đã chọn',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
   }
 
@@ -56,19 +85,22 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
       _origW = 0;
       _origH = 0;
     });
-    
+
     final dir = Directory(dirPath);
     if (!dir.existsSync()) return;
-    
+
     final validExts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'};
-    final files = dir.listSync().whereType<File>().where((f) => 
-        validExts.contains(p.extension(f.path).toLowerCase())
-    ).map((f) => f.path).toList();
-    
+    final files = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => validExts.contains(p.extension(f.path).toLowerCase()))
+        .map((f) => f.path)
+        .toList();
+
     setState(() {
       _imageFiles = files;
     });
-    
+
     if (files.isNotEmpty) {
       _loadImage(files.first);
     } else {
@@ -87,7 +119,10 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
           return;
         }
       }
-      _showMsg('Không tìm thấy ảnh trong clipboard.\nThử kéo thả hoặc dùng nút chọn file.', isError: true);
+      _showMsg(
+        'Không tìm thấy ảnh trong clipboard.\nThử kéo thả hoặc dùng nút chọn file.',
+        isError: true,
+      );
     } catch (e) {
       _showMsg('Lỗi: $e', isError: true);
     }
@@ -117,7 +152,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
     final cropW = _origW - _cropLeft - _cropRight;
     final cropH = _origH - _cropTop - _cropBottom;
     if (cropW <= 0 || cropH <= 0) {
-      _showMsg('Crop quá lớn! Ảnh ${_origW}×${_origH} không đủ.', isError: true);
+      _showMsg('Crop quá lớn! Ảnh $_origW×$_origH không đủ.', isError: true);
       return;
     }
 
@@ -153,12 +188,12 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
       setState(() {
         _isProcessing = false;
         if (_previewImagePath != null) {
-             final ext = p.extension(_previewImagePath!).toLowerCase();
-             final baseName = p.basenameWithoutExtension(_previewImagePath!);
-             final out = p.join(_outputDir!, '$baseName$ext');
-             if (File(out).existsSync()) {
-                 _resultBytes = File(out).readAsBytesSync();
-             }
+          final ext = p.extension(_previewImagePath!).toLowerCase();
+          final baseName = p.basenameWithoutExtension(_previewImagePath!);
+          final out = p.join(_outputDir!, '$baseName$ext');
+          if (File(out).existsSync()) {
+            _resultBytes = File(out).readAsBytesSync();
+          }
         }
       });
       _showMsg('Đã xử lý xong $success ảnh! Đã lưu vào ${_outputDir!}');
@@ -170,22 +205,33 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
 
   void _showMsg(String msg, {bool isError = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(children: [
-        Icon(isError ? Icons.error : Icons.check_circle,
-            color: isError ? AppTheme.danger : AppTheme.success),
-        const SizedBox(width: 12),
-        Expanded(child: Text(msg, style: const TextStyle(fontWeight: FontWeight.w500))),
-      ]),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error : Icons.check_circle,
+              color: isError ? AppTheme.danger : AppTheme.success,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                msg,
+                style: const TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _setCropAll(int v) => setState(() {
-        _cropTop = v;
-        _cropBottom = v;
-        _cropLeft = v;
-        _cropRight = v;
-      });
+    _cropTop = v;
+    _cropBottom = v;
+    _cropLeft = v;
+    _cropRight = v;
+  });
 
   int get _afterW => _origW - _cropLeft - _cropRight;
   int get _afterH => _origH - _cropTop - _cropBottom;
@@ -248,25 +294,32 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _selectedDir != null ? p.basename(_selectedDir!) : p.basename(_previewImagePath ?? ''),
+                          _selectedDir != null
+                              ? p.basename(_selectedDir!)
+                              : p.basename(_previewImagePath ?? ''),
                           style: const TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              fontFamily: 'monospace'),
+                            color: AppTheme.textPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'monospace',
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                         if (_imageFiles.isNotEmpty)
                           Text(
                             '${_imageFiles.length} ảnh đã chọn',
                             style: const TextStyle(
-                                color: AppTheme.textMuted, fontSize: 11),
+                              color: AppTheme.textMuted,
+                              fontSize: 11,
+                            ),
                           ),
                         if (_origW > 0)
                           Text(
-                            '${_origW} × ${_origH} px',
+                            '$_origW × $_origH px',
                             style: const TextStyle(
-                                color: AppTheme.textMuted, fontSize: 11),
+                              color: AppTheme.textMuted,
+                              fontSize: 11,
+                            ),
                           ),
                       ],
                     ),
@@ -296,22 +349,42 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                 if (_linkSides) ...[
                   _cropRow('Tất cả', _cropTop, _setCropAll),
                 ] else ...[
-                  _cropRow('Trên ↑', _cropTop, (v) => setState(() => _cropTop = v)),
+                  _cropRow(
+                    'Trên ↑',
+                    _cropTop,
+                    (v) => setState(() => _cropTop = v),
+                  ),
                   const SizedBox(height: 6),
-                  _cropRow('Dưới ↓', _cropBottom, (v) => setState(() => _cropBottom = v)),
+                  _cropRow(
+                    'Dưới ↓',
+                    _cropBottom,
+                    (v) => setState(() => _cropBottom = v),
+                  ),
                   const SizedBox(height: 6),
-                  _cropRow('Trái ←', _cropLeft, (v) => setState(() => _cropLeft = v)),
+                  _cropRow(
+                    'Trái ←',
+                    _cropLeft,
+                    (v) => setState(() => _cropLeft = v),
+                  ),
                   const SizedBox(height: 6),
-                  _cropRow('Phải →', _cropRight, (v) => setState(() => _cropRight = v)),
+                  _cropRow(
+                    'Phải →',
+                    _cropRight,
+                    (v) => setState(() => _cropRight = v),
+                  ),
                 ],
                 const SizedBox(height: 10),
                 // Quick presets
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
-                  children: [1, 2, 3, 4, 8]
-                      .map((n) => _presetChip('${n}px', n))
-                      .toList(),
+                  children: [
+                    1,
+                    2,
+                    3,
+                    4,
+                    8,
+                  ].map((n) => _presetChip('${n}px', n)).toList(),
                 ),
                 // Preview calc
                 if (_origW > 0) ...[
@@ -324,16 +397,17 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                           : AppTheme.danger.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: _cropValid
-                              ? AppTheme.primary.withValues(alpha: 0.2)
-                              : AppTheme.danger.withValues(alpha: 0.3)),
+                        color: _cropValid
+                            ? AppTheme.primary.withValues(alpha: 0.2)
+                            : AppTheme.danger.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           _cropValid
-                              ? '${_origW}×${_origH}  ➜  $_afterW×$_afterH  ➜  ${_origW}×${_origH}'
+                              ? '$_origW×$_origH  ➜  $_afterW×$_afterH  ➜  $_origW×$_origH'
                               : '❌ Crop quá lớn!',
                           style: TextStyle(
                             color: _cropValid
@@ -346,9 +420,11 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                         ),
                         if (_cropValid && _origW > 0)
                           Text(
-                            'cắt  →  zoom nearest-neighbor  →  giữ nguyên ${_origW}×${_origH}',
+                            'cắt  →  zoom nearest-neighbor  →  giữ nguyên $_origW×$_origH',
                             style: const TextStyle(
-                                color: AppTheme.textMuted, fontSize: 10),
+                              color: AppTheme.textMuted,
+                              fontSize: 10,
+                            ),
                           ),
                       ],
                     ),
@@ -371,14 +447,23 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.crop_rotate, size: 18),
-              label: Text(_isProcessing ? 'Đang xử lý ${(_progress * 100).toStringAsFixed(0)}%' : 'Crop & Restore (${_imageFiles.length})'),
+              label: Text(
+                _isProcessing
+                    ? 'Đang xử lý ${(_progress * 100).toStringAsFixed(0)}%'
+                    : 'Crop & Restore (${_imageFiles.length})',
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
                 textStyle: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w700),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -395,16 +480,18 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
         setState(() => _isDragging = false);
         final validExts = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'};
         List<String> validFiles = [];
-        
+
         for (final xfile in detail.files) {
           if (Directory(xfile.path).existsSync()) {
             _loadDirectory(xfile.path);
             return; // Load entire directory if dropped
-          } else if (validExts.contains(p.extension(xfile.path).toLowerCase())) {
+          } else if (validExts.contains(
+            p.extension(xfile.path).toLowerCase(),
+          )) {
             validFiles.add(xfile.path);
           }
         }
-        
+
         if (validFiles.isNotEmpty) {
           setState(() {
             _selectedDir = p.dirname(validFiles.first);
@@ -413,7 +500,10 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
           });
           _loadImage(validFiles.first);
         } else {
-          _showMsg('Vui lòng kéo ảnh hợp lệ hoặc một thư mục (PNG, JPG...)', isError: true);
+          _showMsg(
+            'Vui lòng kéo ảnh hợp lệ hoặc một thư mục (PNG, JPG...)',
+            isError: true,
+          );
         }
       },
       child: AnimatedContainer(
@@ -425,8 +515,8 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
             color: _isDragging
                 ? AppTheme.primary
                 : (_imageFiles.isEmpty
-                    ? AppTheme.primary.withValues(alpha: 0.3)
-                    : AppTheme.border),
+                      ? AppTheme.primary.withValues(alpha: 0.3)
+                      : AppTheme.border),
             width: _isDragging ? 2.5 : 1.5,
           ),
           boxShadow: _isDragging
@@ -435,7 +525,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                     color: AppTheme.primary.withValues(alpha: 0.25),
                     blurRadius: 24,
                     spreadRadius: 2,
-                  )
+                  ),
                 ]
               : null,
         ),
@@ -446,39 +536,57 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
                 children: [
                   // Header with size info
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: const BoxDecoration(
-                      border:
-                          Border(bottom: BorderSide(color: AppTheme.border)),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
                     ),
-                    child: Row(children: [
-                      const Icon(Icons.compare, size: 16, color: AppTheme.primary),
-                      const SizedBox(width: 8),
-                      const Text('So sánh trước / sau',
-                          style: TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600)),
-                      const Spacer(),
-                      if (_origW > 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                                color:
-                                    AppTheme.primary.withValues(alpha: 0.2)),
-                          ),
-                          child: Text('$_origW × $_origH px',
-                              style: const TextStyle(
-                                  color: AppTheme.primary,
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w600)),
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: AppTheme.border),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.compare,
+                          size: 16,
+                          color: AppTheme.primary,
                         ),
-                    ]),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'So sánh trước / sau',
+                          style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_origW > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: AppTheme.primary.withValues(alpha: 0.2),
+                              ),
+                            ),
+                            child: Text(
+                              '$_origW × $_origH px',
+                              style: const TextStyle(
+                                color: AppTheme.primary,
+                                fontSize: 11,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                   Expanded(
                     child: _resultBytes == null
@@ -529,8 +637,7 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
           ),
         ],
@@ -544,16 +651,17 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          const Text('GỐC',
-              style: TextStyle(
-                  color: AppTheme.textMuted,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.5)),
-          const SizedBox(height: 8),
-          Expanded(
-            child: _imageBox(_previewBytes!, Colors.transparent),
+          const Text(
+            'GỐC',
+            style: TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.5,
+            ),
           ),
+          const SizedBox(height: 8),
+          Expanded(child: _imageBox(_previewBytes!, Colors.transparent)),
         ],
       ),
     );
@@ -566,28 +674,39 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
         children: [
           // Before
           Expanded(
-            child: Column(children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.danger.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                      color: AppTheme.danger.withValues(alpha: 0.2)),
-                ),
-                child: const Text('TRƯỚC',
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.danger.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: AppTheme.danger.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: const Text(
+                    'TRƯỚC',
                     style: TextStyle(
-                        color: AppTheme.danger,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5)),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                  child: _imageBox(_previewBytes!,
-                      AppTheme.danger.withValues(alpha: 0.15))),
-            ]),
+                      color: AppTheme.danger,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _imageBox(
+                    _previewBytes!,
+                    AppTheme.danger.withValues(alpha: 0.15),
+                  ),
+                ),
+              ],
+            ),
           ),
 
           // Arrow
@@ -596,16 +715,20 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.arrow_forward,
-                    color: AppTheme.primary, size: 24),
+                const Icon(
+                  Icons.arrow_forward,
+                  color: AppTheme.primary,
+                  size: 24,
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '-${_cropLeft + _cropRight}W\n-${_cropTop + _cropBottom}H\n→zoom',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                      color: AppTheme.textMuted,
-                      fontSize: 9,
-                      fontFamily: 'monospace'),
+                    color: AppTheme.textMuted,
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ],
             ),
@@ -613,28 +736,39 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
 
           // After
           Expanded(
-            child: Column(children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                      color: AppTheme.success.withValues(alpha: 0.2)),
-                ),
-                child: const Text('SAU',
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: AppTheme.success.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: const Text(
+                    'SAU',
                     style: TextStyle(
-                        color: AppTheme.success,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5)),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                  child: _imageBox(_resultBytes!,
-                      AppTheme.success.withValues(alpha: 0.15))),
-            ]),
+                      color: AppTheme.success,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _imageBox(
+                    _resultBytes!,
+                    AppTheme.success.withValues(alpha: 0.15),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -647,10 +781,11 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
         color: AppTheme.bgSurface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: borderColor == Colors.transparent
-                ? AppTheme.border
-                : borderColor,
-            width: 2),
+          color: borderColor == Colors.transparent
+              ? AppTheme.border
+              : borderColor,
+          width: 2,
+        ),
         // Checkerboard hint via color
       ),
       child: ClipRRect(
@@ -682,48 +817,62 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
           color: active ? color.withValues(alpha: 0.1) : AppTheme.bgSurface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-              color: active ? color.withValues(alpha: 0.3) : AppTheme.border),
+            color: active ? color.withValues(alpha: 0.3) : AppTheme.border,
+          ),
         ),
-        child: Row(children: [
-          Icon(icon, size: 15, color: active ? color : AppTheme.textMuted),
-          const SizedBox(width: 8),
-          Text(label,
+        child: Row(
+          children: [
+            Icon(icon, size: 15, color: active ? color : AppTheme.textMuted),
+            const SizedBox(width: 8),
+            Text(
+              label,
               style: TextStyle(
-                  color: active ? color : AppTheme.textSecondary,
-                  fontSize: 12)),
-        ]),
+                color: active ? color : AppTheme.textSecondary,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _cropRow(String label, int value, void Function(int) onChanged) {
-    return Row(children: [
-      SizedBox(
+    return Row(
+      children: [
+        SizedBox(
           width: 56,
-          child: Text(label,
-              style: const TextStyle(
-                  color: AppTheme.textSecondary, fontSize: 11))),
-      const SizedBox(width: 6),
-      _stepBtn(Icons.remove, value > 0 ? () => onChanged(value - 1) : null),
-      const SizedBox(width: 6),
-      Container(
-        width: 52,
-        height: 34,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
+          child: Text(
+            label,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+          ),
+        ),
+        const SizedBox(width: 6),
+        _stepBtn(Icons.remove, value > 0 ? () => onChanged(value - 1) : null),
+        const SizedBox(width: 6),
+        Container(
+          width: 52,
+          height: 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
             color: AppTheme.bgSurface,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.border)),
-        child: Text('$value px',
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Text(
+            '$value px',
             style: const TextStyle(
-                color: AppTheme.warning,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'monospace')),
-      ),
-      const SizedBox(width: 6),
-      _stepBtn(Icons.add, value < 64 ? () => onChanged(value + 1) : null),
-    ]);
+              color: AppTheme.warning,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        _stepBtn(Icons.add, value < 64 ? () => onChanged(value + 1) : null),
+      ],
+    );
   }
 
   Widget _stepBtn(IconData icon, VoidCallback? onTap) {
@@ -734,14 +883,17 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
         width: 30,
         height: 30,
         decoration: BoxDecoration(
-            color: onTap != null
-                ? AppTheme.primary.withValues(alpha: 0.12)
-                : AppTheme.bgSurface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.border)),
-        child: Icon(icon,
-            size: 14,
-            color: onTap != null ? AppTheme.primary : AppTheme.textMuted),
+          color: onTap != null
+              ? AppTheme.primary.withValues(alpha: 0.12)
+              : AppTheme.bgSurface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Icon(
+          icon,
+          size: 14,
+          color: onTap != null ? AppTheme.primary : AppTheme.textMuted,
+        ),
       ),
     );
   }
@@ -754,43 +906,53 @@ class _CropRestoreScreenState extends State<CropRestoreScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-            color: sel
-                ? AppTheme.primary.withValues(alpha: 0.2)
-                : AppTheme.bgSurface,
-            borderRadius: BorderRadius.circular(8),
-            border:
-                Border.all(color: sel ? AppTheme.primary : AppTheme.border)),
-        child: Text(label,
-            style: TextStyle(
-                color: sel ? AppTheme.primary : AppTheme.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600)),
+          color: sel
+              ? AppTheme.primary.withValues(alpha: 0.2)
+              : AppTheme.bgSurface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: sel ? AppTheme.primary : AppTheme.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: sel ? AppTheme.primary : AppTheme.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
 
-  Widget _card(
-      {required String title,
-      required IconData icon,
-      required Widget child}) {
+  Widget _card({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: AppTheme.bgCard,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppTheme.border)),
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Icon(icon, size: 16, color: AppTheme.primary),
-            const SizedBox(width: 8),
-            Text(title,
+          Row(
+            children: [
+              Icon(icon, size: 16, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
                 style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700)),
-          ]),
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 14),
           child,
         ],

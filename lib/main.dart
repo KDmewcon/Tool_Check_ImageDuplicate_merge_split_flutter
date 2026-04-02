@@ -5,6 +5,7 @@ import 'screens/auto_split_screen.dart';
 import 'screens/merge_screen.dart';
 import 'screens/resize_screen.dart';
 import 'screens/rename_screen.dart';
+import 'screens/meta_cleanup_screen.dart';
 import 'screens/crop_restore_screen.dart';
 import 'theme/app_theme.dart';
 
@@ -75,6 +76,12 @@ class _AppShellState extends State<AppShell> {
       color: AppTheme.accentLight,
     ),
     _NavItem(
+      icon: Icons.cleaning_services_outlined,
+      activeIcon: Icons.cleaning_services,
+      label: 'Dọn .meta',
+      color: AppTheme.warning,
+    ),
+    _NavItem(
       icon: Icons.crop_rotate,
       activeIcon: Icons.crop_rotate,
       label: 'Crop & Restore',
@@ -89,6 +96,7 @@ class _AppShellState extends State<AppShell> {
     MergeScreen(),
     ResizeScreen(),
     RenameScreen(),
+    MetaCleanupScreen(),
     CropRestoreScreen(),
   ];
 
@@ -101,10 +109,7 @@ class _AppShellState extends State<AppShell> {
           _buildSidebar(),
           // Content
           Expanded(
-            child: IndexedStack(
-              index: _selectedIndex,
-              children: _screens,
-            ),
+            child: IndexedStack(index: _selectedIndex, children: _screens),
           ),
         ],
       ),
@@ -116,9 +121,7 @@ class _AppShellState extends State<AppShell> {
       width: 220,
       decoration: const BoxDecoration(
         color: AppTheme.bgCard,
-        border: Border(
-          right: BorderSide(color: AppTheme.border),
-        ),
+        border: Border(right: BorderSide(color: AppTheme.border)),
       ),
       child: Column(
         children: [
@@ -144,8 +147,11 @@ class _AppShellState extends State<AppShell> {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.auto_fix_high,
-                      color: Colors.white, size: 20),
+                  child: const Icon(
+                    Icons.auto_fix_high,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
@@ -196,10 +202,7 @@ class _AppShellState extends State<AppShell> {
             padding: const EdgeInsets.all(16),
             child: const Text(
               'v1.0.0',
-              style: TextStyle(
-                color: AppTheme.textMuted,
-                fontSize: 11,
-              ),
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
               textAlign: TextAlign.center,
             ),
           ),
@@ -208,8 +211,7 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _buildNavItem(
-      _NavItem item, bool isSelected, VoidCallback onTap) {
+  Widget _buildNavItem(_NavItem item, bool isSelected, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Material(
@@ -241,11 +243,9 @@ class _AppShellState extends State<AppShell> {
                 Text(
                   item.label,
                   style: TextStyle(
-                    color:
-                        isSelected ? item.color : AppTheme.textSecondary,
+                    color: isSelected ? item.color : AppTheme.textSecondary,
                     fontSize: 13,
-                    fontWeight:
-                        isSelected ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   ),
                 ),
                 if (isSelected) ...[

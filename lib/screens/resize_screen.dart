@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import '../services/image_processor.dart';
+import '../services/meta_cleanup_service.dart';
 import '../theme/app_theme.dart';
 
 class ResizeScreen extends StatefulWidget {
@@ -16,13 +17,12 @@ class _ScaleOption {
   final String folderName;
   final double percentage;
   final String label;
-  bool enabled;
+  bool enabled = true;
 
   _ScaleOption({
     required this.folderName,
     required this.percentage,
     required this.label,
-    this.enabled = true,
   });
 }
 
@@ -44,13 +44,41 @@ class _ResizeScreenState extends State<ResizeScreen> {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Chọn thư mục ảnh gốc (x4)',
     );
-    if (result != null) {
-      setState(() {
-        _selectedDir = result;
-        _results = null;
-      });
-      await _scanImages();
+    if (result == null) return;
+
+    final deletedMetaFiles =
+        await MetaCleanupService.cleanupMetaFilesOnFolderPick(result);
+    if (!mounted) return;
+
+    setState(() {
+      _selectedDir = result;
+      _results = null;
+    });
+
+    if (deletedMetaFiles != null) {
+      final cleaned = deletedMetaFiles > 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                cleaned ? Icons.cleaning_services : Icons.info_outline,
+                color: cleaned ? AppTheme.warning : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                cleaned
+                    ? 'Đã xóa $deletedMetaFiles file .meta trong thư mục đã chọn'
+                    : 'Không có file .meta trong thư mục đã chọn',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      );
     }
+
+    await _scanImages();
   }
 
   Future<void> _scanImages() async {
@@ -75,10 +103,10 @@ class _ResizeScreenState extends State<ResizeScreen> {
 
     final enabledScales = _scaleOptions
         .where((s) => s.enabled)
-        .map((s) => ResizeScale(
-              folderName: s.folderName,
-              percentage: s.percentage,
-            ))
+        .map(
+          (s) =>
+              ResizeScale(folderName: s.folderName, percentage: s.percentage),
+        )
         .toList();
 
     if (enabledScales.isEmpty) {
@@ -155,8 +183,7 @@ class _ResizeScreenState extends State<ResizeScreen> {
         final isCompact = constraints.maxWidth < 1180;
         final pagePadding = constraints.maxWidth < 880 ? 16.0 : 24.0;
         final panelGap = constraints.maxWidth < 880 ? 16.0 : 24.0;
-        final settingsWidth =
-            (constraints.maxWidth * 0.36).clamp(360.0, 440.0);
+        final settingsWidth = (constraints.maxWidth * 0.36).clamp(360.0, 440.0);
 
         return Padding(
           padding: EdgeInsets.all(pagePadding),
@@ -167,10 +194,7 @@ class _ResizeScreenState extends State<ResizeScreen> {
             layoutBuilder: (currentChild, previousChildren) {
               return Stack(
                 alignment: Alignment.topCenter,
-                children: [
-                  ...previousChildren,
-                  if (currentChild != null) currentChild,
-                ],
+                children: [...previousChildren, ?currentChild],
               );
             },
             child: SizedBox(
@@ -234,8 +258,11 @@ class _ResizeScreenState extends State<ResizeScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.folder,
-                                size: 16, color: AppTheme.primaryLight),
+                            const Icon(
+                              Icons.folder,
+                              size: 16,
+                              color: AppTheme.primaryLight,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Column(
@@ -325,20 +352,29 @@ class _ResizeScreenState extends State<ResizeScreen> {
                           ),
                         ),
                         const Spacer(),
-                        const Icon(Icons.star, size: 14, color: AppTheme.primary),
+                        const Icon(
+                          Icons.star,
+                          size: 14,
+                          color: AppTheme.primary,
+                        ),
                       ],
                     ),
                   ),
                   const SizedBox(height: 10),
                   const Row(
                     children: [
-                      Icon(Icons.arrow_downward,
-                          size: 12, color: AppTheme.textMuted),
+                      Icon(
+                        Icons.arrow_downward,
+                        size: 12,
+                        color: AppTheme.textMuted,
+                      ),
                       SizedBox(width: 4),
                       Text(
                         'Sẽ tạo các thư mục:',
-                        style:
-                            TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                        style: TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
@@ -363,7 +399,9 @@ class _ResizeScreenState extends State<ResizeScreen> {
                             children: [
                               ..._scaleOptions.where((s) => s.enabled).map((s) {
                                 final outputDir = p.join(
-                                    p.dirname(_selectedDir!), s.folderName);
+                                  p.dirname(_selectedDir!),
+                                  s.folderName,
+                                );
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 6),
                                   child: Row(
@@ -374,10 +412,12 @@ class _ResizeScreenState extends State<ResizeScreen> {
                                           vertical: 2,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: _getScaleColor(s.percentage)
-                                              .withValues(alpha: 0.2),
-                                          borderRadius:
-                                              BorderRadius.circular(4),
+                                          color: _getScaleColor(
+                                            s.percentage,
+                                          ).withValues(alpha: 0.2),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
                                         ),
                                         child: Text(
                                           s.folderName,
@@ -413,7 +453,8 @@ class _ResizeScreenState extends State<ResizeScreen> {
             SizedBox(
               height: 48,
               child: ElevatedButton.icon(
-                onPressed: _selectedDir != null &&
+                onPressed:
+                    _selectedDir != null &&
                         _imageFiles.isNotEmpty &&
                         !_isProcessing &&
                         _scaleOptions.any((s) => s.enabled)
@@ -429,7 +470,9 @@ class _ResizeScreenState extends State<ResizeScreen> {
                         ),
                       )
                     : const Icon(Icons.photo_size_select_large, size: 18),
-                label: Text(_isProcessing ? 'Dang resize...' : 'Bat dau resize'),
+                label: Text(
+                  _isProcessing ? 'Dang resize...' : 'Bat dau resize',
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,
@@ -452,8 +495,9 @@ class _ResizeScreenState extends State<ResizeScreen> {
                       child: LinearProgressIndicator(
                         value: _progress,
                         backgroundColor: AppTheme.bgSurface,
-                        valueColor:
-                            const AlwaysStoppedAnimation(AppTheme.primary),
+                        valueColor: const AlwaysStoppedAnimation(
+                          AppTheme.primary,
+                        ),
                         minHeight: 6,
                       ),
                     ),
@@ -495,11 +539,7 @@ class _ResizeScreenState extends State<ResizeScreen> {
           ),
         );
       },
-      child: visible
-          ? child
-          : const SizedBox.shrink(
-              key: ValueKey('hidden'),
-            ),
+      child: visible ? child : const SizedBox.shrink(key: ValueKey('hidden')),
     );
   }
 
@@ -567,8 +607,10 @@ class _ResizeScreenState extends State<ResizeScreen> {
                 ),
                 const SizedBox(width: 10),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(999),
@@ -646,14 +688,14 @@ class _ResizeScreenState extends State<ResizeScreen> {
                 child: _ResizeEmptyPreview(),
               )
             : _results != null
-                ? KeyedSubtree(
-                    key: ValueKey('results-view'),
-                    child: _buildResultsView(),
-                  )
-                : KeyedSubtree(
-                    key: ValueKey('list-view'),
-                    child: _buildFileListPreview(),
-                  ),
+            ? KeyedSubtree(
+                key: ValueKey('results-view'),
+                child: _buildResultsView(),
+              )
+            : KeyedSubtree(
+                key: ValueKey('list-view'),
+                child: _buildFileListPreview(),
+              ),
       ),
     );
   }
@@ -673,7 +715,11 @@ class _ResizeScreenState extends State<ResizeScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.image, size: 18, color: AppTheme.primaryLight),
+                  const Icon(
+                    Icons.image,
+                    size: 18,
+                    color: AppTheme.primaryLight,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     '${_imageFiles.length} ảnh trong thư mục gốc',
@@ -837,7 +883,7 @@ class _ResizeScreenState extends State<ResizeScreen> {
                                 File(files[fileIndex]),
                                 fit: BoxFit.cover,
                                 cacheWidth: 100,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   color: AppTheme.bgSurface,
                                   child: const Icon(
                                     Icons.broken_image,
@@ -877,7 +923,7 @@ class _ResizeScreenState extends State<ResizeScreen> {
               File(path),
               fit: BoxFit.cover,
               cacheWidth: 240,
-              errorBuilder: (_, __, ___) => Container(
+              errorBuilder: (_, _, _) => Container(
                 color: AppTheme.bgSurface,
                 child: const Icon(
                   Icons.broken_image,

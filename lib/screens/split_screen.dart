@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import '../services/image_processor.dart';
+import '../services/meta_cleanup_service.dart';
 import '../theme/app_theme.dart';
 
 class SplitScreen extends StatefulWidget {
@@ -36,7 +37,10 @@ class _SplitScreenState extends State<SplitScreen> {
       final path = result.files.single.path!;
       setState(() {
         _selectedImagePath = path;
-        _outputDir = p.join(p.dirname(path), '${p.basenameWithoutExtension(path)}_split');
+        _outputDir = p.join(
+          p.dirname(path),
+          '${p.basenameWithoutExtension(path)}_split',
+        );
         _resultPaths = [];
       });
       // Get image dimensions
@@ -54,10 +58,37 @@ class _SplitScreenState extends State<SplitScreen> {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Chọn thư mục xuất',
     );
-    if (result != null) {
-      setState(() {
-        _outputDir = result;
-      });
+    if (result == null) return;
+
+    final deletedMetaFiles =
+        await MetaCleanupService.cleanupMetaFilesOnFolderPick(result);
+    if (!mounted) return;
+
+    setState(() {
+      _outputDir = result;
+    });
+
+    if (deletedMetaFiles != null) {
+      final cleaned = deletedMetaFiles > 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                cleaned ? Icons.cleaning_services : Icons.info_outline,
+                color: cleaned ? AppTheme.warning : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                cleaned
+                    ? 'Đã xóa $deletedMetaFiles file .meta trong thư mục xuất'
+                    : 'Không có file .meta trong thư mục xuất',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      );
     }
   }
 
@@ -100,8 +131,10 @@ class _SplitScreenState extends State<SplitScreen> {
               children: [
                 const Icon(Icons.check_circle, color: AppTheme.success),
                 const SizedBox(width: 12),
-                Text('Đã tách thành ${paths.length} ảnh!',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  'Đã tách thành ${paths.length} ảnh!',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ],
             ),
           ),
@@ -140,17 +173,16 @@ class _SplitScreenState extends State<SplitScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final settingsWidth = constraints.maxWidth > 800 ? 380.0 : constraints.maxWidth * 0.45;
+        final settingsWidth = constraints.maxWidth > 800
+            ? 380.0
+            : constraints.maxWidth * 0.45;
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Left panel: Settings
-              SizedBox(
-                width: settingsWidth,
-                child: _buildSettingsPanel(),
-              ),
+              SizedBox(width: settingsWidth, child: _buildSettingsPanel()),
               const SizedBox(width: 24),
               // Right panel: Preview & Results
               Expanded(child: _buildPreviewPanel()),
@@ -183,7 +215,11 @@ class _SplitScreenState extends State<SplitScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.insert_photo, size: 16, color: AppTheme.primary),
+                        const Icon(
+                          Icons.insert_photo,
+                          size: 16,
+                          color: AppTheme.primary,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
@@ -217,7 +253,9 @@ class _SplitScreenState extends State<SplitScreen> {
                 ElevatedButton.icon(
                   onPressed: _isProcessing ? null : _pickImage,
                   icon: const Icon(Icons.add_photo_alternate, size: 16),
-                  label: Text(_selectedImagePath == null ? 'Chọn ảnh' : 'Đổi ảnh'),
+                  label: Text(
+                    _selectedImagePath == null ? 'Chọn ảnh' : 'Đổi ảnh',
+                  ),
                 ),
               ],
             ),
@@ -240,11 +278,14 @@ class _SplitScreenState extends State<SplitScreen> {
                     ),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: Text('×', style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w300,
-                      )),
+                      child: Text(
+                        '×',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
                     ),
                     Expanded(
                       child: _buildTextField(
@@ -294,7 +335,10 @@ class _SplitScreenState extends State<SplitScreen> {
                     ),
                     child: Text(
                       _outputDir!,
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                      ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 2,
                     ),
@@ -317,9 +361,13 @@ class _SplitScreenState extends State<SplitScreen> {
                   : null,
               icon: _isProcessing
                   ? const SizedBox(
-                      width: 16, height: 16,
+                      width: 16,
+                      height: 16,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.content_cut, size: 18),
               label: Text(_isProcessing ? 'Đang tách...' : 'Bắt đầu tách ảnh'),
               style: ElevatedButton.styleFrom(
@@ -346,7 +394,10 @@ class _SplitScreenState extends State<SplitScreen> {
             const SizedBox(height: 6),
             Text(
               '${(_progress * 100).toStringAsFixed(0)}%',
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -365,8 +416,8 @@ class _SplitScreenState extends State<SplitScreen> {
       child: _selectedImagePath == null
           ? _buildEmptyPreview()
           : _resultPaths.isNotEmpty
-              ? _buildResultsGrid()
-              : _buildImagePreview(),
+          ? _buildResultsGrid()
+          : _buildImagePreview(),
     );
   }
 
@@ -375,11 +426,16 @@ class _SplitScreenState extends State<SplitScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.content_cut, size: 56,
-              color: AppTheme.accent.withValues(alpha: 0.4)),
+          Icon(
+            Icons.content_cut,
+            size: 56,
+            color: AppTheme.accent.withValues(alpha: 0.4),
+          ),
           const SizedBox(height: 16),
-          const Text('Chọn ảnh để bắt đầu tách',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
+          const Text(
+            'Chọn ảnh để bắt đầu tách',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+          ),
         ],
       ),
     );
@@ -397,11 +453,14 @@ class _SplitScreenState extends State<SplitScreen> {
             children: [
               Icon(Icons.preview, size: 18, color: AppTheme.accent),
               SizedBox(width: 8),
-              Text('Xem trước', style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              )),
+              Text(
+                'Xem trước',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -412,8 +471,10 @@ class _SplitScreenState extends State<SplitScreen> {
               File(_selectedImagePath!),
               fit: BoxFit.contain,
               errorBuilder: (_, e, st) => const Center(
-                child: Text('Không thể hiển thị ảnh',
-                    style: TextStyle(color: AppTheme.textMuted)),
+                child: Text(
+                  'Không thể hiển thị ảnh',
+                  style: TextStyle(color: AppTheme.textMuted),
+                ),
               ),
             ),
           ),
@@ -434,12 +495,14 @@ class _SplitScreenState extends State<SplitScreen> {
             children: [
               const Icon(Icons.check_circle, size: 18, color: AppTheme.success),
               const SizedBox(width: 8),
-              Text('Kết quả: ${_resultPaths.length} mảnh',
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  )),
+              Text(
+                'Kết quả: ${_resultPaths.length} mảnh',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
               OutlinedButton.icon(
                 onPressed: () {
@@ -477,19 +540,25 @@ class _SplitScreenState extends State<SplitScreen> {
                         cacheWidth: 200,
                         errorBuilder: (_, e, st) => Container(
                           color: AppTheme.bgSurface,
-                          child: const Icon(Icons.broken_image,
-                              color: AppTheme.textMuted),
+                          child: const Icon(
+                            Icons.broken_image,
+                            color: AppTheme.textMuted,
+                          ),
                         ),
                       ),
                       Positioned(
-                        bottom: 0, left: 0, right: 0,
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           color: Colors.black54,
                           child: Text(
                             p.basename(_resultPaths[index]),
                             style: const TextStyle(
-                                color: Colors.white, fontSize: 9),
+                              color: Colors.white,
+                              fontSize: 9,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                           ),
@@ -525,11 +594,14 @@ class _SplitScreenState extends State<SplitScreen> {
             children: [
               Icon(icon, size: 16, color: AppTheme.accent),
               const SizedBox(width: 8),
-              Text(title, style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              )),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -551,7 +623,10 @@ class _SplitScreenState extends State<SplitScreen> {
       style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        labelStyle: const TextStyle(
+          color: AppTheme.textSecondary,
+          fontSize: 12,
+        ),
         prefixIcon: Icon(icon, size: 16, color: AppTheme.textMuted),
         filled: true,
         fillColor: AppTheme.bgSurface,
@@ -567,7 +642,10 @@ class _SplitScreenState extends State<SplitScreen> {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: AppTheme.accent),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
       ),
     );
   }
@@ -603,7 +681,8 @@ class _SplitScreenState extends State<SplitScreen> {
   }
 
   Widget _buildPresetChip(String label, int w, int h) {
-    final isSelected = _widthController.text == w.toString() &&
+    final isSelected =
+        _widthController.text == w.toString() &&
         _heightController.text == h.toString();
     return InkWell(
       onTap: () {

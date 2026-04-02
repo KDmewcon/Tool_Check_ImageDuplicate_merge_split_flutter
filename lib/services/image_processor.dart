@@ -507,7 +507,7 @@ List<String> _autoSplitInIsolate(_AutoSplitParams params) {
       // Always use PNG when removing background (to preserve transparency)
       final finalExt = params.removeWhiteBg ? '.png' : ext;
       final outputName = (prefix != null && prefix.isNotEmpty)
-          ? '$prefix\$${index}$finalExt'
+          ? '$prefix\$$index$finalExt'
           : '${baseName}_${row}_$col$finalExt';
       final outputPath = p.join(params.outputDir, outputName);
 
@@ -1004,7 +1004,7 @@ void _cropRestoreInIsolate(CropRestoreParams params) {
 
   if (cropW <= 0 || cropH <= 0) {
     throw Exception(
-        'Crop quá lớn: ảnh ${origW}x${origH} không thể cắt ${params.cropLeft}+${params.cropRight} ngang, ${params.cropTop}+${params.cropBottom} dọc');
+        'Crop quá lớn: ảnh ${origW}x$origH không thể cắt ${params.cropLeft}+${params.cropRight} ngang, ${params.cropTop}+${params.cropBottom} dọc');
   }
 
   // Step 1: Crop the border pixels

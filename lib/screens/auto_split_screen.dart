@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import '../services/image_processor.dart';
+import '../services/meta_cleanup_service.dart';
 import '../theme/app_theme.dart';
 
 class AutoSplitScreen extends StatefulWidget {
@@ -60,7 +61,9 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
       setState(() {
         _selectedImagePath = path;
         _outputDir = p.join(
-            p.dirname(path), '${p.basenameWithoutExtension(path)}_auto_split');
+          p.dirname(path),
+          '${p.basenameWithoutExtension(path)}_auto_split',
+        );
         _resultPaths = [];
         _gridResult = null;
         _useManualOverride = false;
@@ -106,10 +109,37 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Chọn thư mục xuất',
     );
-    if (result != null) {
-      setState(() {
-        _outputDir = result;
-      });
+    if (result == null) return;
+
+    final deletedMetaFiles =
+        await MetaCleanupService.cleanupMetaFilesOnFolderPick(result);
+    if (!mounted) return;
+
+    setState(() {
+      _outputDir = result;
+    });
+
+    if (deletedMetaFiles != null) {
+      final cleaned = deletedMetaFiles > 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                cleaned ? Icons.cleaning_services : Icons.info_outline,
+                color: cleaned ? AppTheme.warning : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                cleaned
+                    ? 'Đã xóa $deletedMetaFiles file .meta trong thư mục xuất'
+                    : 'Không có file .meta trong thư mục xuất',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      );
     }
   }
 
@@ -211,8 +241,7 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
               children: [
                 const Icon(Icons.check_circle, color: AppTheme.success),
                 const SizedBox(width: 12),
-                Text(msg,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(msg, style: const TextStyle(fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -244,18 +273,16 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final settingsWidth =
-            constraints.maxWidth > 800 ? 400.0 : constraints.maxWidth * 0.45;
+        final settingsWidth = constraints.maxWidth > 800
+            ? 400.0
+            : constraints.maxWidth * 0.45;
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Left panel: Settings
-              SizedBox(
-                width: settingsWidth,
-                child: _buildSettingsPanel(),
-              ),
+              SizedBox(width: settingsWidth, child: _buildSettingsPanel()),
               const SizedBox(width: 24),
               // Right panel: Preview & Results
               Expanded(child: _buildPreviewPanel()),
@@ -288,8 +315,11 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.insert_photo,
-                            size: 16, color: AppTheme.warning),
+                        const Icon(
+                          Icons.insert_photo,
+                          size: 16,
+                          color: AppTheme.warning,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
@@ -324,7 +354,8 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                   onPressed: _isProcessing ? null : _pickImage,
                   icon: const Icon(Icons.add_photo_alternate, size: 16),
                   label: Text(
-                      _selectedImagePath == null ? 'Chọn ảnh' : 'Đổi ảnh'),
+                    _selectedImagePath == null ? 'Chọn ảnh' : 'Đổi ảnh',
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.warning,
                     foregroundColor: Colors.white,
@@ -347,15 +378,22 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                   children: [
                     const Icon(Icons.tune, size: 14, color: AppTheme.textMuted),
                     const SizedBox(width: 8),
-                    const Text('Độ nhạy',
-                        style: TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 12)),
+                    const Text(
+                      'Độ nhạy',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
                     const Spacer(),
-                    Text('$_sensitivity%',
-                        style: const TextStyle(
-                            color: AppTheme.warning,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600)),
+                    Text(
+                      '$_sensitivity%',
+                      style: const TextStyle(
+                        color: AppTheme.warning,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
                 SliderTheme(
@@ -395,9 +433,13 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                           ),
                         ),
                         SizedBox(width: 10),
-                        Text('Đang phân tích...',
-                            style: TextStyle(
-                                color: AppTheme.textSecondary, fontSize: 12)),
+                        Text(
+                          'Đang phân tích...',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -410,20 +452,27 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                       color: AppTheme.success.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: AppTheme.success.withValues(alpha: 0.3)),
+                        color: AppTheme.success.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Column(
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.check_circle,
-                                size: 16, color: AppTheme.success),
+                            const Icon(
+                              Icons.check_circle,
+                              size: 16,
+                              color: AppTheme.success,
+                            ),
                             const SizedBox(width: 8),
-                            const Text('Đã phát hiện lưới',
-                                style: TextStyle(
-                                    color: AppTheme.success,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Đã phát hiện lưới',
+                              style: TextStyle(
+                                color: AppTheme.success,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 10),
@@ -438,13 +487,14 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                   const SizedBox(height: 14),
                   InkWell(
                     onTap: () {
-                      setState(
-                          () => _useManualOverride = !_useManualOverride);
+                      setState(() => _useManualOverride = !_useManualOverride);
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: _useManualOverride
                             ? AppTheme.warning.withValues(alpha: 0.1)
@@ -468,10 +518,13 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                                 : AppTheme.textMuted,
                           ),
                           const SizedBox(width: 8),
-                          const Text('Chỉnh tay số cột/hàng',
-                              style: TextStyle(
-                                  color: AppTheme.textSecondary,
-                                  fontSize: 12)),
+                          const Text(
+                            'Chỉnh tay số cột/hàng',
+                            style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -484,8 +537,7 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                           child: _buildCounterField(
                             label: 'Số cột',
                             value: _manualCols,
-                            onChanged: (v) =>
-                                setState(() => _manualCols = v),
+                            onChanged: (v) => setState(() => _manualCols = v),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -493,8 +545,7 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                           child: _buildCounterField(
                             label: 'Số hàng',
                             value: _manualRows,
-                            onChanged: (v) =>
-                                setState(() => _manualRows = v),
+                            onChanged: (v) => setState(() => _manualRows = v),
                           ),
                         ),
                       ],
@@ -506,13 +557,17 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                         color: AppTheme.warning.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: AppTheme.warning.withValues(alpha: 0.2)),
+                          color: AppTheme.warning.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.grid_on,
-                              size: 14, color: AppTheme.warning),
+                          const Icon(
+                            Icons.grid_on,
+                            size: 14,
+                            color: AppTheme.warning,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             '$_manualCols × $_manualRows = ${_manualCols * _manualRows} mảnh',
@@ -551,7 +606,9 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                     child: Text(
                       _outputDir!,
                       style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 11),
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                      ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 2,
                     ),
@@ -576,16 +633,25 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                 TextField(
                   controller: _idController,
                   style: const TextStyle(
-                      color: AppTheme.textPrimary, fontSize: 14),
+                    color: AppTheme.textPrimary,
+                    fontSize: 14,
+                  ),
                   decoration: InputDecoration(
                     labelText: 'ID (ví dụ: 2)',
                     labelStyle: const TextStyle(
-                        color: AppTheme.textSecondary, fontSize: 12),
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                    ),
                     hintText: 'Nhập ID...',
                     hintStyle: const TextStyle(
-                        color: AppTheme.textMuted, fontSize: 13),
-                    prefixIcon: const Icon(Icons.tag,
-                        size: 16, color: AppTheme.warning),
+                      color: AppTheme.textMuted,
+                      fontSize: 13,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.tag,
+                      size: 16,
+                      color: AppTheme.warning,
+                    ),
                     filled: true,
                     fillColor: AppTheme.bgSurface,
                     border: OutlineInputBorder(
@@ -598,11 +664,12 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
-                      borderSide:
-                          const BorderSide(color: AppTheme.warning),
+                      borderSide: const BorderSide(color: AppTheme.warning),
                     ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                   ),
                   onChanged: (_) => setState(() {}),
                 ),
@@ -619,12 +686,19 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                     children: [
                       const Row(
                         children: [
-                          Icon(Icons.info_outline,
-                              size: 12, color: AppTheme.textMuted),
+                          Icon(
+                            Icons.info_outline,
+                            size: 12,
+                            color: AppTheme.textMuted,
+                          ),
                           SizedBox(width: 6),
-                          Text('Ví dụ tên file:',
-                              style: TextStyle(
-                                  color: AppTheme.textMuted, fontSize: 10)),
+                          Text(
+                            'Ví dụ tên file:',
+                            style: TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 10,
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -635,9 +709,13 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                           _buildNamePreviewChip(_getPreviewName(1)),
                           _buildNamePreviewChip(_getPreviewName(2)),
                           _buildNamePreviewChip(_getPreviewName(3)),
-                          const Text('...',
-                              style: TextStyle(
-                                  color: AppTheme.textMuted, fontSize: 11)),
+                          const Text(
+                            '...',
+                            style: TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 11,
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -662,7 +740,9 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: _enableResize
                           ? AppTheme.accent.withValues(alpha: 0.1)
@@ -686,10 +766,13 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                               : AppTheme.textMuted,
                         ),
                         const SizedBox(width: 8),
-                        const Text('Tạo thêm bản resize',
-                            style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 12)),
+                        const Text(
+                          'Tạo thêm bản resize',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -703,77 +786,102 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                           controller: _resizeWidthController,
                           keyboardType: TextInputType.number,
                           style: const TextStyle(
-                              color: AppTheme.textPrimary, fontSize: 14),
+                            color: AppTheme.textPrimary,
+                            fontSize: 14,
+                          ),
                           decoration: InputDecoration(
                             labelText: 'Rộng (px)',
                             labelStyle: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 11),
-                            prefixIcon: const Icon(Icons.width_normal,
-                                size: 14, color: AppTheme.accent),
+                              color: AppTheme.textSecondary,
+                              fontSize: 11,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.width_normal,
+                              size: 14,
+                              color: AppTheme.accent,
+                            ),
                             filled: true,
                             fillColor: AppTheme.bgSurface,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide:
-                                  const BorderSide(color: AppTheme.border),
+                              borderSide: const BorderSide(
+                                color: AppTheme.border,
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide:
-                                  const BorderSide(color: AppTheme.border),
+                              borderSide: const BorderSide(
+                                color: AppTheme.border,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide:
-                                  const BorderSide(color: AppTheme.accent),
+                              borderSide: const BorderSide(
+                                color: AppTheme.accent,
+                              ),
                             ),
                             contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                           onChanged: (_) => setState(() {}),
                         ),
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('×',
-                            style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w300)),
+                        child: Text(
+                          '×',
+                          style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w300,
+                          ),
+                        ),
                       ),
                       Expanded(
                         child: TextField(
                           controller: _resizeHeightController,
                           keyboardType: TextInputType.number,
                           style: const TextStyle(
-                              color: AppTheme.textPrimary, fontSize: 14),
+                            color: AppTheme.textPrimary,
+                            fontSize: 14,
+                          ),
                           decoration: InputDecoration(
                             labelText: 'Cao (px)',
                             labelStyle: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 11),
-                            prefixIcon: const Icon(Icons.height,
-                                size: 14, color: AppTheme.accent),
+                              color: AppTheme.textSecondary,
+                              fontSize: 11,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.height,
+                              size: 14,
+                              color: AppTheme.accent,
+                            ),
                             filled: true,
                             fillColor: AppTheme.bgSurface,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide:
-                                  const BorderSide(color: AppTheme.border),
+                              borderSide: const BorderSide(
+                                color: AppTheme.border,
+                              ),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide:
-                                  const BorderSide(color: AppTheme.border),
+                              borderSide: const BorderSide(
+                                color: AppTheme.border,
+                              ),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide:
-                                  const BorderSide(color: AppTheme.accent),
+                              borderSide: const BorderSide(
+                                color: AppTheme.accent,
+                              ),
                             ),
                             contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
                           ),
                           onChanged: (_) => setState(() {}),
                         ),
@@ -802,18 +910,24 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                       color: AppTheme.accent.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: AppTheme.accent.withValues(alpha: 0.2)),
+                        color: AppTheme.accent.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline,
-                            size: 12, color: AppTheme.accent),
+                        const Icon(
+                          Icons.info_outline,
+                          size: 12,
+                          color: AppTheme.accent,
+                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             'Ảnh gốc giữ nguyên, bản resize lưu vào thư mục "${p.basename(_outputDir ?? "")}_resize"',
                             style: const TextStyle(
-                                color: AppTheme.accent, fontSize: 10),
+                              color: AppTheme.accent,
+                              fontSize: 10,
+                            ),
                           ),
                         ),
                       ],
@@ -839,7 +953,9 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: _removeWhiteBg
                           ? AppTheme.success.withValues(alpha: 0.1)
@@ -867,14 +983,20 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Khử nền trắng → trong suốt',
-                                  style: TextStyle(
-                                      color: AppTheme.textSecondary,
-                                      fontSize: 12)),
-                              Text('Output sẽ lưu dưới dạng PNG',
-                                  style: TextStyle(
-                                      color: AppTheme.textMuted,
-                                      fontSize: 10)),
+                              Text(
+                                'Khử nền trắng → trong suốt',
+                                style: TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Text(
+                                'Output sẽ lưu dưới dạng PNG',
+                                style: TextStyle(
+                                  color: AppTheme.textMuted,
+                                  fontSize: 10,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -887,25 +1009,32 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Mức hiệu chỉnh (tolerance):',
-                          style: TextStyle(
-                              color: AppTheme.textSecondary, fontSize: 11)),
+                      const Text(
+                        'Mức hiệu chỉnh (tolerance):',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: AppTheme.success.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                              color:
-                                  AppTheme.success.withValues(alpha: 0.3)),
+                            color: AppTheme.success.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Text(
                           '${_whiteTolerance.round()}',
                           style: const TextStyle(
-                              color: AppTheme.success,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700),
+                            color: AppTheme.success,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                     ],
@@ -922,15 +1051,27 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Chặt (1)',
-                          style: TextStyle(
-                              color: AppTheme.textMuted, fontSize: 10)),
-                      const Text('Chỉ trắng thuần',
-                          style: TextStyle(
-                              color: AppTheme.textMuted, fontSize: 10)),
-                      const Text('Rộng (100)',
-                          style: TextStyle(
-                              color: AppTheme.textMuted, fontSize: 10)),
+                      const Text(
+                        'Chặt (1)',
+                        style: TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 10,
+                        ),
+                      ),
+                      const Text(
+                        'Chỉ trắng thuần',
+                        style: TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 10,
+                        ),
+                      ),
+                      const Text(
+                        'Rộng (100)',
+                        style: TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 10,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -940,18 +1081,24 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                       color: AppTheme.warning.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: AppTheme.warning.withValues(alpha: 0.2)),
+                        color: AppTheme.warning.withValues(alpha: 0.2),
+                      ),
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.tips_and_updates,
-                            size: 12, color: AppTheme.warning),
+                        Icon(
+                          Icons.tips_and_updates,
+                          size: 12,
+                          color: AppTheme.warning,
+                        ),
                         SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             'Low = chỉ xóa trắng thuần. High = xóa cả gần-trắng (có thể ảnh hưởng viền).',
                             style: TextStyle(
-                                color: AppTheme.warning, fontSize: 10),
+                              color: AppTheme.warning,
+                              fontSize: 10,
+                            ),
                           ),
                         ),
                       ],
@@ -967,7 +1114,8 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
           SizedBox(
             height: 48,
             child: ElevatedButton.icon(
-              onPressed: _selectedImagePath != null &&
+              onPressed:
+                  _selectedImagePath != null &&
                       !_isProcessing &&
                       (_gridResult != null || _useManualOverride)
                   ? _startAutoSplit
@@ -977,10 +1125,12 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.auto_fix_high, size: 18),
-              label:
-                  Text(_isProcessing ? 'Đang tách...' : 'Tách tự động'),
+              label: Text(_isProcessing ? 'Đang tách...' : 'Tách tự động'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.warning,
                 foregroundColor: Colors.white,
@@ -998,8 +1148,7 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
               child: LinearProgressIndicator(
                 value: _progress,
                 backgroundColor: AppTheme.bgSurface,
-                valueColor:
-                    const AlwaysStoppedAnimation(AppTheme.warning),
+                valueColor: const AlwaysStoppedAnimation(AppTheme.warning),
                 minHeight: 6,
               ),
             ),
@@ -1007,7 +1156,9 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
             Text(
               '${(_progress * 100).toStringAsFixed(0)}%',
               style: const TextStyle(
-                  color: AppTheme.textSecondary, fontSize: 12),
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -1023,13 +1174,11 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
         Row(
           children: [
             Expanded(
-              child: _buildInfoChip(
-                  Icons.view_column, 'Cột', '${g.cols}'),
+              child: _buildInfoChip(Icons.view_column, 'Cột', '${g.cols}'),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _buildInfoChip(
-                  Icons.table_rows, 'Hàng', '${g.rows}'),
+              child: _buildInfoChip(Icons.table_rows, 'Hàng', '${g.rows}'),
             ),
           ],
         ),
@@ -1038,21 +1187,19 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
           children: [
             Expanded(
               child: _buildInfoChip(
-                  Icons.width_normal, 'Rộng', '${g.cellWidth}px'),
+                Icons.width_normal,
+                'Rộng',
+                '${g.cellWidth}px',
+              ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _buildInfoChip(
-                  Icons.height, 'Cao', '${g.cellHeight}px'),
+              child: _buildInfoChip(Icons.height, 'Cao', '${g.cellHeight}px'),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        _buildInfoChip(
-          Icons.grid_view,
-          'Tổng mảnh',
-          '${g.cols * g.rows}',
-        ),
+        _buildInfoChip(Icons.grid_view, 'Tổng mảnh', '${g.cols * g.rows}'),
       ],
     );
   }
@@ -1070,15 +1217,19 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
         children: [
           Icon(icon, size: 12, color: AppTheme.textMuted),
           const SizedBox(width: 6),
-          Text(label,
-              style: const TextStyle(
-                  color: AppTheme.textMuted, fontSize: 10)),
+          Text(
+            label,
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
+          ),
           const SizedBox(width: 4),
-          Text(value,
-              style: const TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700)),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
@@ -1100,7 +1251,8 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
   }
 
   Widget _buildResizePreset(String label, int w, int h) {
-    final isSelected = _resizeWidthController.text == w.toString() &&
+    final isSelected =
+        _resizeWidthController.text == w.toString() &&
         _resizeHeightController.text == h.toString();
     return InkWell(
       onTap: () {
@@ -1141,12 +1293,15 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppTheme.warning.withValues(alpha: 0.25)),
       ),
-      child: Text(name,
-          style: const TextStyle(
-              color: AppTheme.warning,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'monospace')),
+      child: Text(
+        name,
+        style: const TextStyle(
+          color: AppTheme.warning,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'monospace',
+        ),
+      ),
     );
   }
 
@@ -1168,19 +1323,25 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: const TextStyle(
-                        color: AppTheme.textMuted, fontSize: 10)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 10,
+                  ),
+                ),
                 SizedBox(
-                  height: 30, // constrain height to fit in row without layout breaking
+                  height:
+                      30, // constrain height to fit in row without layout breaking
                   child: TextFormField(
                     key: ValueKey('counter-$label-$value'),
                     initialValue: value.toString(),
                     keyboardType: TextInputType.number,
                     style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700),
+                      color: AppTheme.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
                     decoration: const InputDecoration(
                       isDense: true,
                       border: InputBorder.none,
@@ -1204,8 +1365,11 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                 borderRadius: BorderRadius.circular(4),
                 child: Container(
                   padding: const EdgeInsets.all(2),
-                  child: const Icon(Icons.add, size: 16,
-                      color: AppTheme.textSecondary),
+                  child: const Icon(
+                    Icons.add,
+                    size: 16,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
               ),
               InkWell(
@@ -1215,8 +1379,11 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                 borderRadius: BorderRadius.circular(4),
                 child: Container(
                   padding: const EdgeInsets.all(2),
-                  child: const Icon(Icons.remove, size: 16,
-                      color: AppTheme.textSecondary),
+                  child: const Icon(
+                    Icons.remove,
+                    size: 16,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
               ),
             ],
@@ -1236,8 +1403,8 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
       child: _selectedImagePath == null
           ? _buildEmptyPreview()
           : _resultPaths.isNotEmpty
-              ? _buildResultsGrid()
-              : _buildImagePreviewWithGrid(),
+          ? _buildResultsGrid()
+          : _buildImagePreviewWithGrid(),
     );
   }
 
@@ -1246,17 +1413,22 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.auto_awesome, size: 56,
-              color: AppTheme.warning.withValues(alpha: 0.4)),
+          Icon(
+            Icons.auto_awesome,
+            size: 56,
+            color: AppTheme.warning.withValues(alpha: 0.4),
+          ),
           const SizedBox(height: 16),
-          const Text('Chọn ảnh sprite sheet để phân tích tự động',
-              style:
-                  TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
+          const Text(
+            'Chọn ảnh sprite sheet để phân tích tự động',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+          ),
           const SizedBox(height: 8),
           const Text(
-              'Thuật toán sẽ tự phát hiện các đường lưới\nvà tách thành từng ô vuông',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-              textAlign: TextAlign.center),
+            'Thuật toán sẽ tự phát hiện các đường lưới\nvà tách thành từng ô vuông',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -1274,23 +1446,27 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
             children: [
               const Icon(Icons.preview, size: 18, color: AppTheme.warning),
               const SizedBox(width: 8),
-              const Text('Xem trước lưới đã phát hiện',
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  )),
+              const Text(
+                'Xem trước lưới đã phát hiện',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               if (_gridResult != null) ...[
                 const Spacer(),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.warning.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${_currentCols} × ${_currentRows} lưới',
+                    '$_currentCols × $_currentRows lưới',
                     style: const TextStyle(
                       color: AppTheme.warning,
                       fontSize: 11,
@@ -1332,8 +1508,10 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
           File(_selectedImagePath!),
           fit: BoxFit.contain,
           errorBuilder: (_, e, st) => const Center(
-            child: Text('Không thể hiển thị ảnh',
-                style: TextStyle(color: AppTheme.textMuted)),
+            child: Text(
+              'Không thể hiển thị ảnh',
+              style: TextStyle(color: AppTheme.textMuted),
+            ),
           ),
         ),
         // Grid overlay
@@ -1368,15 +1546,16 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.check_circle,
-                  size: 18, color: AppTheme.success),
+              const Icon(Icons.check_circle, size: 18, color: AppTheme.success),
               const SizedBox(width: 8),
-              Text('Kết quả: ${_resultPaths.length} mảnh',
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  )),
+              Text(
+                'Kết quả: ${_resultPaths.length} mảnh',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
               OutlinedButton.icon(
                 onPressed: () {
@@ -1414,8 +1593,10 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                         cacheWidth: 200,
                         errorBuilder: (_, e, st) => Container(
                           color: AppTheme.bgSurface,
-                          child: const Icon(Icons.broken_image,
-                              color: AppTheme.textMuted),
+                          child: const Icon(
+                            Icons.broken_image,
+                            color: AppTheme.textMuted,
+                          ),
                         ),
                       ),
                       Positioned(
@@ -1428,7 +1609,9 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
                           child: Text(
                             p.basename(_resultPaths[index]),
                             style: const TextStyle(
-                                color: Colors.white, fontSize: 9),
+                              color: Colors.white,
+                              fontSize: 9,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                           ),
@@ -1464,12 +1647,14 @@ class _AutoSplitScreenState extends State<AutoSplitScreen> {
             children: [
               Icon(icon, size: 16, color: AppTheme.warning),
               const SizedBox(width: 8),
-              Text(title,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  )),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),

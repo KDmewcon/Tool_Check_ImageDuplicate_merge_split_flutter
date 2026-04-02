@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
+import '../services/meta_cleanup_service.dart';
 import '../theme/app_theme.dart';
 
 class RenameScreen extends StatefulWidget {
@@ -31,13 +32,41 @@ class _RenameScreenState extends State<RenameScreen> {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Chọn thư mục chứa file cần rename',
     );
-    if (result != null) {
-      setState(() {
-        _selectedDir = result;
-        _results = null;
-      });
-      await _scanFiles();
+    if (result == null) return;
+
+    final deletedMetaFiles =
+        await MetaCleanupService.cleanupMetaFilesOnFolderPick(result);
+    if (!mounted) return;
+
+    setState(() {
+      _selectedDir = result;
+      _results = null;
+    });
+
+    if (deletedMetaFiles != null) {
+      final cleaned = deletedMetaFiles > 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                cleaned ? Icons.cleaning_services : Icons.info_outline,
+                color: cleaned ? AppTheme.warning : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                cleaned
+                    ? 'Đã xóa $deletedMetaFiles file .meta trong thư mục đã chọn'
+                    : 'Không có file .meta trong thư mục đã chọn',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      );
     }
+
+    await _scanFiles();
   }
 
   Future<void> _scanFiles() async {
@@ -55,20 +84,19 @@ class _RenameScreenState extends State<RenameScreen> {
         if (dollarIndex > 0) {
           final prefix = name.substring(0, dollarIndex);
           final suffix = name.substring(dollarIndex); // includes $
-          entries.add(_FileEntry(
-            path: entity.path,
-            prefix: prefix,
-            suffix: suffix,
-            ext: ext,
-          ));
+          entries.add(
+            _FileEntry(
+              path: entity.path,
+              prefix: prefix,
+              suffix: suffix,
+              ext: ext,
+            ),
+          );
         } else {
           // Files without $ pattern - still show them
-          entries.add(_FileEntry(
-            path: entity.path,
-            prefix: name,
-            suffix: '',
-            ext: ext,
-          ));
+          entries.add(
+            _FileEntry(path: entity.path, prefix: name, suffix: '', ext: ext),
+          );
         }
       }
     }
@@ -137,28 +165,34 @@ class _RenameScreenState extends State<RenameScreen> {
       try {
         // Check if destination already exists
         if (File(newPath).existsSync() && oldPath != newPath) {
-          results.add(_RenameResult(
-            oldName: p.basename(oldPath),
-            newName: newName,
-            success: false,
-            error: 'File đã tồn tại',
-          ));
+          results.add(
+            _RenameResult(
+              oldName: p.basename(oldPath),
+              newName: newName,
+              success: false,
+              error: 'File đã tồn tại',
+            ),
+          );
           continue;
         }
 
         File(oldPath).renameSync(newPath);
-        results.add(_RenameResult(
-          oldName: p.basename(oldPath),
-          newName: newName,
-          success: true,
-        ));
+        results.add(
+          _RenameResult(
+            oldName: p.basename(oldPath),
+            newName: newName,
+            success: true,
+          ),
+        );
       } catch (e) {
-        results.add(_RenameResult(
-          oldName: p.basename(oldPath),
-          newName: newName,
-          success: false,
-          error: e.toString(),
-        ));
+        results.add(
+          _RenameResult(
+            oldName: p.basename(oldPath),
+            newName: newName,
+            success: false,
+            error: e.toString(),
+          ),
+        );
       }
     }
 
@@ -178,8 +212,10 @@ class _RenameScreenState extends State<RenameScreen> {
             children: [
               const Icon(Icons.check_circle, color: AppTheme.success),
               const SizedBox(width: 12),
-              Text('Đã rename $successCount/${results.length} file!',
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                'Đã rename $successCount/${results.length} file!',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ],
           ),
         ),
@@ -207,17 +243,15 @@ class _RenameScreenState extends State<RenameScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final settingsWidth =
-            constraints.maxWidth > 800 ? 380.0 : constraints.maxWidth * 0.45;
+        final settingsWidth = constraints.maxWidth > 800
+            ? 380.0
+            : constraints.maxWidth * 0.45;
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: settingsWidth,
-                child: _buildSettingsPanel(),
-              ),
+              SizedBox(width: settingsWidth, child: _buildSettingsPanel()),
               const SizedBox(width: 24),
               Expanded(child: _buildPreviewPanel()),
             ],
@@ -250,8 +284,11 @@ class _RenameScreenState extends State<RenameScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.folder,
-                            size: 16, color: AppTheme.accentLight),
+                        const Icon(
+                          Icons.folder,
+                          size: 16,
+                          color: AppTheme.accentLight,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Column(
@@ -284,9 +321,9 @@ class _RenameScreenState extends State<RenameScreen> {
                 ElevatedButton.icon(
                   onPressed: _isProcessing ? null : _pickDir,
                   icon: const Icon(Icons.folder_open, size: 16),
-                  label: Text(_selectedDir == null
-                      ? 'Chọn thư mục'
-                      : 'Đổi thư mục'),
+                  label: Text(
+                    _selectedDir == null ? 'Chọn thư mục' : 'Đổi thư mục',
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.accentLight,
                     foregroundColor: Colors.white,
@@ -312,13 +349,16 @@ class _RenameScreenState extends State<RenameScreen> {
                       color: AppTheme.danger.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: AppTheme.danger.withValues(alpha: 0.25)),
+                        color: AppTheme.danger.withValues(alpha: 0.25),
+                      ),
                     ),
                     child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: AppTheme.danger,
                             borderRadius: BorderRadius.circular(8),
@@ -362,11 +402,17 @@ class _RenameScreenState extends State<RenameScreen> {
                   ),
 
                   // Other prefixes if any
-                  if (_files.where((f) => f.suffix.isNotEmpty).map((f) => f.prefix).toSet().length > 1) ...[
+                  if (_files
+                          .where((f) => f.suffix.isNotEmpty)
+                          .map((f) => f.prefix)
+                          .toSet()
+                          .length >
+                      1) ...[
                     const SizedBox(height: 10),
-                    const Text('Chọn prefix khác:',
-                        style: TextStyle(
-                            color: AppTheme.textMuted, fontSize: 10)),
+                    const Text(
+                      'Chọn prefix khác:',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 10),
+                    ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 6,
@@ -404,12 +450,19 @@ class _RenameScreenState extends State<RenameScreen> {
                     decoration: InputDecoration(
                       labelText: 'Prefix mới',
                       labelStyle: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 12),
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
                       hintText: 'VD: 5',
                       hintStyle: const TextStyle(
-                          color: AppTheme.textMuted, fontSize: 16),
-                      prefixIcon: const Icon(Icons.edit,
-                          size: 16, color: AppTheme.success),
+                        color: AppTheme.textMuted,
+                        fontSize: 16,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.edit,
+                        size: 16,
+                        color: AppTheme.success,
+                      ),
                       filled: true,
                       fillColor: AppTheme.bgSurface,
                       border: OutlineInputBorder(
@@ -425,7 +478,9 @@ class _RenameScreenState extends State<RenameScreen> {
                         borderSide: const BorderSide(color: AppTheme.success),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 14),
+                        horizontal: 12,
+                        vertical: 14,
+                      ),
                     ),
                     onChanged: (_) => setState(() {}),
                   ),
@@ -437,21 +492,28 @@ class _RenameScreenState extends State<RenameScreen> {
                         color: AppTheme.success.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                            color: AppTheme.success.withValues(alpha: 0.2)),
+                          color: AppTheme.success.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Row(
                             children: [
-                              Icon(Icons.preview,
-                                  size: 12, color: AppTheme.success),
+                              Icon(
+                                Icons.preview,
+                                size: 12,
+                                color: AppTheme.success,
+                              ),
                               SizedBox(width: 6),
-                              Text('Xem trước:',
-                                  style: TextStyle(
-                                      color: AppTheme.success,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600)),
+                              Text(
+                                'Xem trước:',
+                                style: TextStyle(
+                                  color: AppTheme.success,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -476,11 +538,14 @@ class _RenameScreenState extends State<RenameScreen> {
                                     ),
                                   ),
                                   const Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 8),
-                                    child: Icon(Icons.arrow_forward,
-                                        size: 12,
-                                        color: AppTheme.textMuted),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                    ),
+                                    child: Icon(
+                                      Icons.arrow_forward,
+                                      size: 12,
+                                      color: AppTheme.textMuted,
+                                    ),
                                   ),
                                   Expanded(
                                     child: Text(
@@ -502,7 +567,9 @@ class _RenameScreenState extends State<RenameScreen> {
                             Text(
                               '... và ${matching.length - 4} file nữa',
                               style: const TextStyle(
-                                  color: AppTheme.textMuted, fontSize: 10),
+                                color: AppTheme.textMuted,
+                                fontSize: 10,
+                              ),
                             ),
                         ],
                       ),
@@ -518,7 +585,8 @@ class _RenameScreenState extends State<RenameScreen> {
             SizedBox(
               height: 48,
               child: ElevatedButton.icon(
-                onPressed: !_isProcessing &&
+                onPressed:
+                    !_isProcessing &&
                         _newPrefixController.text.trim().isNotEmpty &&
                         matching.isNotEmpty
                     ? _startRename
@@ -528,11 +596,16 @@ class _RenameScreenState extends State<RenameScreen> {
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Icon(Icons.drive_file_rename_outline, size: 18),
-                label: Text(_isProcessing
-                    ? 'Đang rename...'
-                    : 'Rename ${matching.length} file'),
+                label: Text(
+                  _isProcessing
+                      ? 'Đang rename...'
+                      : 'Rename ${matching.length} file',
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.success,
                   foregroundColor: Colors.white,
@@ -550,8 +623,9 @@ class _RenameScreenState extends State<RenameScreen> {
 
   Widget _buildPrefixChip(String prefix) {
     final isSelected = _detectedPrefix == prefix;
-    final count =
-        _files.where((f) => f.prefix == prefix && f.suffix.isNotEmpty).length;
+    final count = _files
+        .where((f) => f.prefix == prefix && f.suffix.isNotEmpty)
+        .length;
     return InkWell(
       onTap: () {
         setState(() => _detectedPrefix = prefix);
@@ -606,8 +680,8 @@ class _RenameScreenState extends State<RenameScreen> {
       child: _selectedDir == null
           ? _buildEmptyPreview()
           : _results != null
-              ? _buildResultsView()
-              : _buildFileListView(),
+          ? _buildResultsView()
+          : _buildFileListView(),
     );
   }
 
@@ -616,20 +690,26 @@ class _RenameScreenState extends State<RenameScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.drive_file_rename_outline,
-              size: 56, color: AppTheme.success.withValues(alpha: 0.4)),
+          Icon(
+            Icons.drive_file_rename_outline,
+            size: 56,
+            color: AppTheme.success.withValues(alpha: 0.4),
+          ),
           const SizedBox(height: 16),
-          const Text('Chọn thư mục chứa file cần rename',
-              style:
-                  TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
+          const Text(
+            'Chọn thư mục chứa file cần rename',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+          ),
           const SizedBox(height: 8),
           const Text(
-              'Hỗ trợ đổi prefix của file theo mẫu\nVD: 8\$1.png → 5\$1.png',
-              style: TextStyle(
-                  color: AppTheme.textMuted,
-                  fontSize: 12,
-                  fontFamily: 'monospace'),
-              textAlign: TextAlign.center),
+            'Hỗ trợ đổi prefix của file theo mẫu\nVD: 8\$1.png → 5\$1.png',
+            style: TextStyle(
+              color: AppTheme.textMuted,
+              fontSize: 12,
+              fontFamily: 'monospace',
+            ),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
@@ -649,12 +729,13 @@ class _RenameScreenState extends State<RenameScreen> {
               const Icon(Icons.list, size: 18, color: AppTheme.accentLight),
               const SizedBox(width: 8),
               Text(
-                  '${_files.length} file — ${matching.length} file khớp pattern',
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  )),
+                '${_files.length} file — ${matching.length} file khớp pattern',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -664,12 +745,14 @@ class _RenameScreenState extends State<RenameScreen> {
             itemCount: _files.length,
             itemBuilder: (context, index) {
               final file = _files[index];
-              final isMatching = file.prefix == _detectedPrefix &&
-                  file.suffix.isNotEmpty;
+              final isMatching =
+                  file.prefix == _detectedPrefix && file.suffix.isNotEmpty;
               return Container(
                 margin: const EdgeInsets.only(bottom: 4),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: 8),
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: isMatching
                       ? AppTheme.danger.withValues(alpha: 0.06)
@@ -677,7 +760,8 @@ class _RenameScreenState extends State<RenameScreen> {
                   borderRadius: BorderRadius.circular(8),
                   border: isMatching
                       ? Border.all(
-                          color: AppTheme.danger.withValues(alpha: 0.15))
+                          color: AppTheme.danger.withValues(alpha: 0.15),
+                        )
                       : null,
                 ),
                 child: Row(
@@ -685,9 +769,7 @@ class _RenameScreenState extends State<RenameScreen> {
                     Icon(
                       isMatching ? Icons.check_circle : Icons.circle_outlined,
                       size: 14,
-                      color: isMatching
-                          ? AppTheme.danger
-                          : AppTheme.textMuted,
+                      color: isMatching ? AppTheme.danger : AppTheme.textMuted,
                     ),
                     const SizedBox(width: 10),
                     if (isMatching) ...[
@@ -740,16 +822,16 @@ class _RenameScreenState extends State<RenameScreen> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.check_circle,
-                  size: 18, color: AppTheme.success),
+              const Icon(Icons.check_circle, size: 18, color: AppTheme.success),
               const SizedBox(width: 8),
               Text(
-                  'Kết quả: $successCount thành côngrename${failCount > 0 ? ', $failCount lỗi' : ''}',
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  )),
+                'Kết quả: $successCount thành côngrename${failCount > 0 ? ', $failCount lỗi' : ''}',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
               OutlinedButton.icon(
                 onPressed: () {
@@ -811,11 +893,12 @@ class _RenameScreenState extends State<RenameScreen> {
                                 ),
                               ),
                               const Padding(
-                                padding:
-                                    EdgeInsets.symmetric(horizontal: 6),
-                                child: Icon(Icons.arrow_forward,
-                                    size: 10,
-                                    color: AppTheme.textMuted),
+                                padding: EdgeInsets.symmetric(horizontal: 6),
+                                child: Icon(
+                                  Icons.arrow_forward,
+                                  size: 10,
+                                  color: AppTheme.textMuted,
+                                ),
                               ),
                               Text(
                                 result.newName,
@@ -834,7 +917,9 @@ class _RenameScreenState extends State<RenameScreen> {
                             Text(
                               result.error!,
                               style: const TextStyle(
-                                  color: AppTheme.danger, fontSize: 10),
+                                color: AppTheme.danger,
+                                fontSize: 10,
+                              ),
                             ),
                         ],
                       ),
@@ -868,12 +953,14 @@ class _RenameScreenState extends State<RenameScreen> {
             children: [
               Icon(icon, size: 16, color: AppTheme.success),
               const SizedBox(width: 8),
-              Text(title,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  )),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),

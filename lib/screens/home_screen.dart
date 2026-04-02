@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/duplicate_group.dart';
 import '../services/image_scanner.dart';
+import '../services/meta_cleanup_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/duplicate_group_card.dart';
 
@@ -28,8 +29,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-    _pulseAnimation =
-        Tween<double>(begin: 0.4, end: 1.0).animate(_pulseController);
+    _pulseAnimation = Tween<double>(
+      begin: 0.4,
+      end: 1.0,
+    ).animate(_pulseController);
   }
 
   @override
@@ -42,12 +45,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Chọn thư mục chứa ảnh',
     );
-    if (result != null) {
-      setState(() {
-        _selectedPath = result;
-        _duplicateGroups = [];
-        _currentProgress = null;
-      });
+    if (result == null) return;
+
+    final deletedMetaFiles =
+        await MetaCleanupService.cleanupMetaFilesOnFolderPick(result);
+    if (!mounted) return;
+
+    setState(() {
+      _selectedPath = result;
+      _duplicateGroups = [];
+      _currentProgress = null;
+    });
+
+    if (deletedMetaFiles != null) {
+      final cleaned = deletedMetaFiles > 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                cleaned ? Icons.cleaning_services : Icons.info_outline,
+                color: cleaned ? AppTheme.warning : AppTheme.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                cleaned
+                    ? 'Đã xóa $deletedMetaFiles file .meta trong thư mục đã chọn'
+                    : 'Không có file .meta trong thư mục đã chọn',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
+      );
     }
   }
 
@@ -60,14 +90,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       _currentProgress = null;
     });
 
-    final groups = await _scanner.findDuplicates(
-      _selectedPath!,
-      (progress) {
-        setState(() {
-          _currentProgress = progress;
-        });
-      },
-    );
+    final groups = await _scanner.findDuplicates(_selectedPath!, (progress) {
+      setState(() {
+        _currentProgress = progress;
+      });
+    });
 
     setState(() {
       _duplicateGroups = groups;
@@ -155,7 +182,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 color: AppTheme.danger.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.danger.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppTheme.danger.withValues(alpha: 0.3),
+                ),
               ),
               child: const Row(
                 children: [
@@ -182,9 +211,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: const Text('Hủy'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.danger,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.danger),
             onPressed: () => Navigator.pop(ctx, true),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -232,8 +259,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             child: _isScanning
                 ? _buildScanningView()
                 : _duplicateGroups.isEmpty
-                    ? _buildEmptyView()
-                    : _buildResultsView(),
+                ? _buildEmptyView()
+                : _buildResultsView(),
           ),
         ],
       ),
@@ -245,9 +272,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
       decoration: const BoxDecoration(
         color: AppTheme.bgDark,
-        border: Border(
-          bottom: BorderSide(color: AppTheme.border),
-        ),
+        border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       child: Row(
         children: [
@@ -262,7 +287,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.find_replace, color: Colors.white, size: 22),
+            child: const Icon(
+              Icons.find_replace,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
           const SizedBox(width: 14),
           const Column(
@@ -280,10 +309,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               Text(
                 'Tìm và xóa ảnh trùng lặp',
-                style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
               ),
             ],
           ),
@@ -301,8 +327,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.folder_open,
-                      size: 16, color: AppTheme.warning),
+                  const Icon(
+                    Icons.folder_open,
+                    size: 16,
+                    color: AppTheme.warning,
+                  ),
                   const SizedBox(width: 8),
                   Flexible(
                     child: Text(
@@ -328,15 +357,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             const SizedBox(width: 8),
             ElevatedButton.icon(
               onPressed: _isScanning ? _cancelScan : _startScan,
-              icon: Icon(
-                _isScanning ? Icons.stop : Icons.search,
-                size: 16,
-              ),
+              icon: Icon(_isScanning ? Icons.stop : Icons.search, size: 16),
               label: Text(_isScanning ? 'Dừng' : 'Quét ảnh'),
               style: _isScanning
-                  ? ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.danger,
-                    )
+                  ? ElevatedButton.styleFrom(backgroundColor: AppTheme.danger)
                   : null,
             ),
           ],
@@ -361,7 +385,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [
-                      AppTheme.primary.withValues(alpha: _pulseAnimation.value * 0.3),
+                      AppTheme.primary.withValues(
+                        alpha: _pulseAnimation.value * 0.3,
+                      ),
                       Colors.transparent,
                     ],
                   ),
@@ -402,7 +428,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         value: _currentProgress!.progress,
                         backgroundColor: Colors.transparent,
                         valueColor: const AlwaysStoppedAnimation(
-                            AppTheme.primary),
+                          AppTheme.primary,
+                        ),
                       ),
                     ),
                   ),
@@ -440,7 +467,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.bgCard,
                       borderRadius: BorderRadius.circular(10),
@@ -449,8 +478,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.content_copy,
-                            size: 16, color: AppTheme.danger),
+                        const Icon(
+                          Icons.content_copy,
+                          size: 16,
+                          color: AppTheme.danger,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Tìm thấy ${_currentProgress!.duplicateGroupsFound} nhóm trùng',
@@ -492,7 +524,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
             ),
             child: Icon(
-              _selectedPath == null ? Icons.folder_outlined : Icons.image_search,
+              _selectedPath == null
+                  ? Icons.folder_outlined
+                  : Icons.image_search,
               size: 52,
               color: AppTheme.primary.withValues(alpha: 0.8),
             ),
@@ -502,8 +536,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _selectedPath == null
                 ? 'Chọn thư mục để bắt đầu'
                 : _currentProgress != null
-                    ? 'Không tìm thấy ảnh trùng lặp! 🎉'
-                    : 'Nhấn "Quét ảnh" để tìm ảnh trùng',
+                ? 'Không tìm thấy ảnh trùng lặp! 🎉'
+                : 'Nhấn "Quét ảnh" để tìm ảnh trùng',
             style: const TextStyle(
               color: AppTheme.textPrimary,
               fontSize: 20,
@@ -515,12 +549,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _selectedPath == null
                 ? 'Ứng dụng sẽ quét toàn bộ ảnh trong thư mục và tìm các ảnh giống nhau'
                 : _currentProgress != null
-                    ? 'Tất cả ảnh trong thư mục đều là duy nhất'
-                    : 'Quá trình quét có thể mất vài phút tùy số lượng ảnh',
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 14,
-            ),
+                ? 'Tất cả ảnh trong thư mục đều là duy nhất'
+                : 'Quá trình quét có thể mất vài phút tùy số lượng ảnh',
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
           ),
           if (_selectedPath == null) ...[
             const SizedBox(height: 32),
@@ -529,8 +560,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               icon: const Icon(Icons.folder_open, size: 18),
               label: const Text('Chọn thư mục'),
               style: ElevatedButton.styleFrom(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 16,
+                ),
               ),
             ),
           ],
@@ -563,16 +596,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildStatsBar() {
-    final totalDuplicates =
-        _duplicateGroups.fold(0, (sum, g) => sum + g.images.length - 1);
+    final totalDuplicates = _duplicateGroups.fold(
+      0,
+      (sum, g) => sum + g.images.length - 1,
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       decoration: const BoxDecoration(
         color: AppTheme.bgCard,
-        border: Border(
-          bottom: BorderSide(color: AppTheme.border),
-        ),
+        border: Border(bottom: BorderSide(color: AppTheme.border)),
       ),
       child: Row(
         children: [
@@ -633,7 +666,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildStatChip(
-      IconData icon, String value, String label, Color color) {
+    IconData icon,
+    String value,
+    String label,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
@@ -660,10 +697,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               Text(
                 label,
-                style: const TextStyle(
-                  color: AppTheme.textMuted,
-                  fontSize: 10,
-                ),
+                style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
               ),
             ],
           ),
