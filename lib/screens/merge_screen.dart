@@ -15,12 +15,15 @@ class MergeScreen extends StatefulWidget {
 
 class _MergeScreenState extends State<MergeScreen> {
   final List<String> _imagePaths = [];
+  final ScrollController _imageListScrollController = ScrollController();
+  final ScrollController _previewGridScrollController = ScrollController();
   String? _outputPath;
   int _columns = 2;
   int _spacing = 0;
   bool _isProcessing = false;
   double _progress = 0;
   String? _resultPath;
+  bool _showResultPreview = false;
   final _columnsController = TextEditingController(text: '2');
   final _spacingController = TextEditingController(text: '0');
 
@@ -37,6 +40,7 @@ class _MergeScreenState extends State<MergeScreen> {
         setState(() {
           _imagePaths.addAll(paths);
           _resultPath = null;
+          _showResultPreview = false;
           _outputPath ??= p.join(p.dirname(paths.first), 'merged_output.png');
         });
       }
@@ -47,6 +51,7 @@ class _MergeScreenState extends State<MergeScreen> {
     setState(() {
       _imagePaths.removeAt(index);
       _resultPath = null;
+      _showResultPreview = false;
     });
   }
 
@@ -54,6 +59,7 @@ class _MergeScreenState extends State<MergeScreen> {
     setState(() {
       _imagePaths.clear();
       _resultPath = null;
+      _showResultPreview = false;
     });
   }
 
@@ -63,6 +69,7 @@ class _MergeScreenState extends State<MergeScreen> {
       final item = _imagePaths.removeAt(oldIndex);
       _imagePaths.insert(newIndex, item);
       _resultPath = null;
+      _showResultPreview = false;
     });
   }
 
@@ -94,6 +101,7 @@ class _MergeScreenState extends State<MergeScreen> {
       _isProcessing = true;
       _progress = 0;
       _resultPath = null;
+      _showResultPreview = false;
     });
 
     try {
@@ -111,6 +119,7 @@ class _MergeScreenState extends State<MergeScreen> {
       setState(() {
         _resultPath = path;
         _isProcessing = false;
+        _showResultPreview = false;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -119,8 +128,10 @@ class _MergeScreenState extends State<MergeScreen> {
               children: [
                 const Icon(Icons.check_circle, color: AppTheme.success),
                 const SizedBox(width: 12),
-                const Text('Gộp ảnh thành công!',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text(
+                  'Gộp ảnh thành công!',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
               ],
             ),
           ),
@@ -150,6 +161,8 @@ class _MergeScreenState extends State<MergeScreen> {
 
   @override
   void dispose() {
+    _imageListScrollController.dispose();
+    _previewGridScrollController.dispose();
     _columnsController.dispose();
     _spacingController.dispose();
     super.dispose();
@@ -159,17 +172,16 @@ class _MergeScreenState extends State<MergeScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final settingsWidth = constraints.maxWidth > 800 ? 380.0 : constraints.maxWidth * 0.45;
+        final settingsWidth = constraints.maxWidth > 800
+            ? 380.0
+            : constraints.maxWidth * 0.45;
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Left panel: Settings
-              SizedBox(
-                width: settingsWidth,
-                child: _buildSettingsPanel(),
-              ),
+              SizedBox(width: settingsWidth, child: _buildSettingsPanel()),
               const SizedBox(width: 24),
               // Right panel: Preview
               Expanded(child: _buildPreviewPanel()),
@@ -194,8 +206,11 @@ class _MergeScreenState extends State<MergeScreen> {
               children: [
                 if (_imagePaths.isNotEmpty)
                   IconButton(
-                    icon: const Icon(Icons.delete_sweep,
-                        size: 18, color: AppTheme.danger),
+                    icon: const Icon(
+                      Icons.delete_sweep,
+                      size: 18,
+                      color: AppTheme.danger,
+                    ),
                     onPressed: _clearAll,
                     tooltip: 'Xóa tất cả',
                   ),
@@ -208,12 +223,17 @@ class _MergeScreenState extends State<MergeScreen> {
                   Container(
                     constraints: const BoxConstraints(maxHeight: 300),
                     child: ReorderableListView.builder(
+                      scrollController: _imageListScrollController,
+                      primary: false,
                       shrinkWrap: true,
                       buildDefaultDragHandles: true,
                       itemCount: _imagePaths.length,
                       onReorder: _reorderImages,
                       itemBuilder: (context, index) {
-                        return _buildImageItem(index, key: ValueKey(_imagePaths[index] + index.toString()));
+                        return _buildImageItem(
+                          index,
+                          key: ValueKey(_imagePaths[index] + index.toString()),
+                        );
                       },
                     ),
                   ),
@@ -293,7 +313,9 @@ class _MergeScreenState extends State<MergeScreen> {
                     child: Text(
                       _outputPath!,
                       style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 11),
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                      ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 2,
                     ),
@@ -311,18 +333,22 @@ class _MergeScreenState extends State<MergeScreen> {
           SizedBox(
             height: 48,
             child: ElevatedButton.icon(
-              onPressed:
-                  _imagePaths.length >= 2 && !_isProcessing ? _startMerge : null,
+              onPressed: _imagePaths.length >= 2 && !_isProcessing
+                  ? _startMerge
+                  : null,
               icon: _isProcessing
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Icon(Icons.merge, size: 18),
-              label: Text(_isProcessing
-                  ? 'Đang gộp...'
-                  : 'Gộp ${_imagePaths.length} ảnh'),
+              label: Text(
+                _isProcessing ? 'Đang gộp...' : 'Gộp ${_imagePaths.length} ảnh',
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
                 foregroundColor: Colors.white,
@@ -348,7 +374,9 @@ class _MergeScreenState extends State<MergeScreen> {
             Text(
               '${(_progress * 100).toStringAsFixed(0)}%',
               style: const TextStyle(
-                  color: AppTheme.textSecondary, fontSize: 12),
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -382,8 +410,11 @@ class _MergeScreenState extends State<MergeScreen> {
                 cacheWidth: 72,
                 errorBuilder: (_, e, st) => Container(
                   color: AppTheme.bgCard,
-                  child:
-                      const Icon(Icons.broken_image, size: 16, color: AppTheme.textMuted),
+                  child: const Icon(
+                    Icons.broken_image,
+                    size: 16,
+                    color: AppTheme.textMuted,
+                  ),
                 ),
               ),
             ),
@@ -412,10 +443,7 @@ class _MergeScreenState extends State<MergeScreen> {
           Expanded(
             child: Text(
               p.basename(path),
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -432,17 +460,29 @@ class _MergeScreenState extends State<MergeScreen> {
   }
 
   Widget _buildPreviewPanel() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: Container(
+        key: ValueKey(
+          _resultPath != null && _showResultPreview
+              ? 'result'
+              : _imagePaths.isEmpty
+              ? 'empty'
+              : 'grid-preview',
+        ),
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: _resultPath != null && _showResultPreview
+            ? _buildResultPreview()
+            : _imagePaths.isEmpty
+            ? _buildEmptyPreview()
+            : _buildGridPreview(),
       ),
-      child: _resultPath != null
-          ? _buildResultPreview()
-          : _imagePaths.isEmpty
-              ? _buildEmptyPreview()
-              : _buildGridPreview(),
     );
   }
 
@@ -451,14 +491,21 @@ class _MergeScreenState extends State<MergeScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.merge, size: 56,
-              color: AppTheme.primary.withValues(alpha: 0.4)),
+          Icon(
+            Icons.merge,
+            size: 56,
+            color: AppTheme.primary.withValues(alpha: 0.4),
+          ),
           const SizedBox(height: 16),
-          const Text('Thêm ảnh để bắt đầu gộp',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 16)),
+          const Text(
+            'Thêm ảnh để bắt đầu gộp',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 16),
+          ),
           const SizedBox(height: 8),
-          const Text('Kéo thả để sắp xếp thứ tự',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          const Text(
+            'Kéo thả để sắp xếp thứ tự',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+          ),
         ],
       ),
     );
@@ -466,6 +513,9 @@ class _MergeScreenState extends State<MergeScreen> {
 
   Widget _buildGridPreview() {
     final cols = int.tryParse(_columnsController.text) ?? 2;
+    final safeCols = cols.clamp(1, 10);
+    final rows = (_imagePaths.length / safeCols).ceil();
+    final spacing = int.tryParse(_spacingController.text) ?? 0;
     return Column(
       children: [
         Container(
@@ -473,75 +523,164 @@ class _MergeScreenState extends State<MergeScreen> {
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: AppTheme.border)),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.preview, size: 18, color: AppTheme.primary),
-              const SizedBox(width: 8),
-              const Text('Xem trước bố cục',
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  )),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '$cols cột × ${(_imagePaths.length / cols).ceil()} hàng',
-                  style: const TextStyle(
-                    color: AppTheme.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  const Icon(Icons.preview, size: 18, color: AppTheme.primary),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Xem trước bố cục',
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$safeCols cột × $rows hàng',
+                      style: const TextStyle(
+                        color: AppTheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (_resultPath != null) ...[
+                    const SizedBox(width: 10),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() => _showResultPreview = true);
+                      },
+                      icon: const Icon(Icons.image_search, size: 16),
+                      label: const Text('Xem ảnh đã gộp'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildPreviewStat(
+                      icon: Icons.photo_library_outlined,
+                      label: 'Tổng ảnh',
+                      value: '${_imagePaths.length}',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildPreviewStat(
+                      icon: Icons.grid_view_rounded,
+                      label: 'Bố cục',
+                      value: '$safeCols × $rows',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildPreviewStat(
+                      icon: Icons.space_bar,
+                      label: 'Khoảng cách',
+                      value: '$spacing px',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Bấm nút x trên từng ảnh để bỏ nhanh khỏi bản gộp.',
+                style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
               ),
             ],
           ),
         ),
         Expanded(
           child: GridView.builder(
+            controller: _previewGridScrollController,
             padding: const EdgeInsets.all(16),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: cols.clamp(1, 10),
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+              crossAxisCount: safeCols,
+              crossAxisSpacing: spacing > 0 ? spacing.toDouble() : 10,
+              mainAxisSpacing: spacing > 0 ? spacing.toDouble() : 10,
+              childAspectRatio: 1,
             ),
             itemCount: _imagePaths.length,
             itemBuilder: (context, index) {
+              final path = _imagePaths[index];
               return Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: AppTheme.border),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.16),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: BorderRadius.circular(11),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
                       Image.file(
-                        File(_imagePaths[index]),
+                        File(path),
                         fit: BoxFit.cover,
                         cacheWidth: 300,
                         errorBuilder: (_, e, st) => Container(
                           color: AppTheme.bgSurface,
-                          child: const Icon(Icons.broken_image,
-                              color: AppTheme.textMuted),
+                          child: const Icon(
+                            Icons.broken_image,
+                            color: AppTheme.textMuted,
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withValues(alpha: 0.22),
+                                Colors.transparent,
+                                Colors.black.withValues(alpha: 0.62),
+                              ],
+                              stops: const [0, 0.45, 1],
+                            ),
+                          ),
                         ),
                       ),
                       Positioned(
-                        top: 4,
-                        left: 4,
+                        top: 8,
+                        left: 8,
                         child: Container(
-                          width: 22,
-                          height: 22,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(6),
+                            color: Colors.black.withValues(alpha: 0.58),
+                            borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             '${index + 1}',
@@ -551,6 +690,55 @@ class _MergeScreenState extends State<MergeScreen> {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.58),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => _removeImage(index),
+                            child: const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 8,
+                        right: 8,
+                        bottom: 8,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              p.basename(path),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${index + 1}/${_imagePaths.length}',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.78),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -576,17 +764,35 @@ class _MergeScreenState extends State<MergeScreen> {
             children: [
               const Icon(Icons.check_circle, size: 18, color: AppTheme.success),
               const SizedBox(width: 8),
-              const Text('Kết quả gộp ảnh',
-                  style: TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  )),
+              const Text(
+                'Kết quả gộp ảnh',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               const Spacer(),
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() => _showResultPreview = false);
+                },
+                icon: const Icon(Icons.edit, size: 14),
+                label: const Text('Sửa danh sách'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
               Text(
                 p.basename(_resultPath!),
-                style:
-                    const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -600,14 +806,61 @@ class _MergeScreenState extends State<MergeScreen> {
                 File(_resultPath!),
                 fit: BoxFit.contain,
                 errorBuilder: (_, e, st) => const Center(
-                  child: Text('Không thể hiển thị ảnh',
-                      style: TextStyle(color: AppTheme.textMuted)),
+                  child: Text(
+                    'Không thể hiển thị ảnh',
+                    style: TextStyle(color: AppTheme.textMuted),
+                  ),
                 ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildPreviewStat({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.bgSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppTheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 10,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -631,16 +884,15 @@ class _MergeScreenState extends State<MergeScreen> {
             children: [
               Icon(icon, size: 16, color: AppTheme.primary),
               const SizedBox(width: 8),
-              Text(title,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  )),
-              if (trailing != null) ...[
-                const Spacer(),
-                trailing,
-              ],
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (trailing != null) ...[const Spacer(), trailing],
             ],
           ),
           const SizedBox(height: 14),
@@ -663,8 +915,10 @@ class _MergeScreenState extends State<MergeScreen> {
       onChanged: (_) => setState(() {}),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle:
-            const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        labelStyle: const TextStyle(
+          color: AppTheme.textSecondary,
+          fontSize: 12,
+        ),
         prefixIcon: Icon(icon, size: 16, color: AppTheme.textMuted),
         filled: true,
         fillColor: AppTheme.bgSurface,
@@ -680,8 +934,10 @@ class _MergeScreenState extends State<MergeScreen> {
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: AppTheme.primary),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
       ),
     );
   }
